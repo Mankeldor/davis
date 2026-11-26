@@ -296,18 +296,58 @@ class ApiUserAppKeysTest extends WebTestCase
     {
         $client = static::createClient();
 
-        // The fixtures revoked this key of test_user a day ago
-        $revokedAt = $this->key('app_revoked')->getRevokedAt();
+        // A key of test_user2 that was revoked a day ago
+        $em = $this->em();
+        $key = AppKey::create('Old phone', ['test_user2'], new \DateTimeImmutable('-1 day'))->setSecretHash('x');
+        $em->persist($key);
+        $em->flush();
+        $appId = $key->getAppId();
+        $revokedAt = $this->key($appId)->getRevokedAt();
         $this->assertNotNull($revokedAt);
 
         foreach ([1, 2] as $attempt) {
-            $data = $this->api($client, 'POST', $this->revokeUrl('test_user', 'app_revoked'));
+            $data = $this->api($client, 'POST', $this->revokeUrl('test_user2', $appId));
 
             $this->assertResponseStatusCodeSame(200, 'Attempt '.$attempt);
             $this->assertSame($revokedAt->getTimestamp(), (new \DateTimeImmutable($data['data']['revoked_at']))->getTimestamp());
         }
 
-        $this->assertSame($revokedAt->getTimestamp(), $this->key('app_revoked')->getRevokedAt()?->getTimestamp());
+        $this->assertSame($revokedAt->getTimestamp(), $this->key($appId)->getRevokedAt()?->getTimestamp());
+    }
+
+    /**
+     * The API does not touch an administrator. A key that is for an administrator and nobody
+     * else was made in the dashboard or on the console, and is revoked there. The answer does
+     * not depend on the key, so it does not tell whether there is one.
+     */
+    public function testAnAppKeyOfAnAdministratorCannotBeRevokedOverTheApi(): void
+    {
+        $client = static::createClient();
+
+        $em = $this->em();
+        $key = AppKey::create('Admin tool', ['test_user']);
+        $secret = $key->issueSecret();
+        $em->persist($key);
+        $em->flush();
+        $appId = $key->getAppId();
+        $this->assertSame('principals/test_user', $this->logIn('test_user*'.$appId, $secret));
+
+        $cases = [
+            'an active key of the administrator' => $appId,
+            'a revoked key of the administrator' => 'app_revoked',
+            'a key that does not exist' => 'app_000000000000000000000000',
+        ];
+        foreach ($cases as $case => $id) {
+            $data = $this->api($client, 'POST', $this->revokeUrl('test_user', $id));
+
+            $this->assertResponseStatusCodeSame(403, $case);
+            $this->assertSame('error', $data['status'], $case);
+            $this->assertSame('App Keys of Admin Users Cannot Be Revoked Over the API', $data['message'], $case);
+            $this->assertArrayNotHasKey('data', $data, $case);
+        }
+
+        $this->assertNull($this->key($appId)->getRevokedAt(), 'The key is still active');
+        $this->assertSame('principals/test_user', $this->logIn('test_user*'.$appId, $secret), 'and still logs in');
     }
 
     /**

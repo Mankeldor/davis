@@ -13,8 +13,9 @@ section is not released (see `RELEASE.md`).
 
 ## [5.6.3-st2.5] - 2026-11-26
 
-> **Updating needs no manual step.** No migration, no new setting. One thing changes for
-> whatever calls the API: an email address that another user already has is now refused.
+> **Updating needs no manual step.** No migration, no new setting. Two things change for
+> whatever calls the API: an email address that another user already has is now refused, and
+> the app keys of an administrator can no longer be revoked.
 
 ### Changed
 
@@ -30,6 +31,14 @@ section is not released (see `RELEASE.md`).
     already has is never an error.
   - It is a rule of the API only. The dashboard does not check it, and users who already
     share an address stay as they are and can still be changed.
+- **The API no longer revokes the app keys of an administrator.**
+  `POST /api/v1/users/{userId}/app_keys/{appId}/revoke` answers `403` with the message
+  `App Keys of Admin Users Cannot Be Revoked Over the API` when the user is an
+  administrator, whether the key exists or not. Before, a key that was for an administrator
+  and nobody else could be revoked that way. Such a key stays valid; revoke it in the
+  dashboard or with `davis:app-key:revoke`. With this, the API leaves administrators alone
+  without exception: it does not change or delete one, and neither creates nor revokes a key
+  for one.
 
 ## [5.6.3-st2.4] - 2026-11-26
 

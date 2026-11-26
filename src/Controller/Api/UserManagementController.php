@@ -33,8 +33,8 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  *
  * Nothing here can grant more than a regular account: no password, no admin flag, and an
  * administrator cannot be deleted. An app key is always for exactly one user who is not an
- * administrator; a key for all users can neither be created nor revoked. That stays with the
- * dashboard and the console.
+ * administrator; a key for all users or for an administrator can neither be created nor
+ * revoked. That stays with the dashboard and the console.
  */
 #[Route('/api/v1', name: 'api_v1_')]
 #[WithMonologChannel('api')]
@@ -501,6 +501,14 @@ class UserManagementController extends AbstractController
         $user = $this->entityManager->getRepository(User::class)->find($userId);
         if (!$user) {
             return $this->error('User Not Found', 404);
+        }
+
+        // The API does not touch an administrator: no change, no deletion, no key, and so no
+        // revocation either. Asked before the key is looked up, so the answer is the same
+        // whether the key exists or not.
+        $principal = $this->principals->findOneByUri($user->getPrincipalUri());
+        if ($principal && $principal->getIsAdmin()) {
+            return $this->error('App Keys of Admin Users Cannot Be Revoked Over the API', 403);
         }
 
         // Only a key that is for this user and nobody else. A key for all users or for several

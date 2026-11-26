@@ -7,6 +7,9 @@ Only a key whose scope is exactly this user can be revoked here. A key for all u
 for several users and a key of another user are answered with `App Key Not Found`, whether they
 exist or not.
 
+A key of an administrator cannot be revoked over the API. Use the dashboard or the
+`davis:app-key:revoke` command for that. The answer is the same whether such a key exists or not.
+
 Revoking a key that is already revoked succeeds and returns the original revocation date.
 
 This endpoint is only available when both `API_USER_MANAGEMENT_ENABLED` and `APP_KEYS_ENABLED` are
@@ -112,6 +115,20 @@ or
 {
 	"status": "error",
 	"message": "User Not Found",
+	"timestamp": "2026-01-23T15:01:33+01:00"
+}
+```
+
+**Condition** : If the user is an administrator.
+
+**Code** : `403 FORBIDDEN`
+
+**Content** :
+
+```json
+{
+	"status": "error",
+	"message": "App Keys of Admin Users Cannot Be Revoked Over the API",
 	"timestamp": "2026-01-23T15:01:33+01:00"
 }
 ```
