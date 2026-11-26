@@ -11,6 +11,16 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`INSTALL.md` says how a database password with special characters goes into
+  `DATABASE_URL`.** It has to be URL-encoded, and then every `%` of the encoding doubled:
+  `p@ss#word` is written `p%%40ss%%23word`. Davis reads the setting with `resolve:`, which
+  takes `%…%` for the name of a parameter. Before, the file said only "URL-encoded", and a
+  password written that way stops `composer install` with
+  `You have requested a non-existent parameter`. `INSTALL.md` now also recommends a password
+  of letters and digits only, and has a command that prints the finished form.
+
 ## [5.6.3-st2.5] - 2026-11-26
 
 > **Updating needs no manual step.** No migration, no new setting. Two things change for

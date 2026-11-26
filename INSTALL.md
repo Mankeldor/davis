@@ -64,10 +64,39 @@ MAILER_DSN=smtp://user:<password>@smtp.example.org:587
 - `APP_ENV=prod` has to be there **before** the next step. Without it Composer starts the
   development environment, which the archive does not have the packages for.
 - `APP_SECRET`: `php -r 'echo bin2hex(random_bytes(16)), PHP_EOL;'` prints one.
-- `DATABASE_URL`: put the version of your own database server after `serverVersion=`. A
-  password with special characters has to be URL-encoded.
+- `DATABASE_URL`: put the version of your own database server after `serverVersion=`. For
+  the password, see below.
 - `ADMIN_LOGIN` and `ADMIN_PASSWORD` are the login of the dashboard.
 - `example.org` in the lines above is a placeholder. Replace it with addresses of your own.
+
+**The database password in `DATABASE_URL`.** Simplest is a long password of letters and
+digits only for the database user of Davis; then there is nothing to encode.
+`php -r 'echo bin2hex(random_bytes(20)), PHP_EOL;'` prints one with 40 characters.
+
+A password with other characters goes in after two steps: URL-encode it, then double every
+`%` of the encoding. `p@ss#word` becomes `p%40ss%23word` and then `p%%40ss%%23word`. The
+second step is needed because Davis reads the setting as `%env(resolve:DATABASE_URL)%`, and
+`resolve:` takes `%…%` for the name of a container parameter and `%%` for a single `%`.
+
+This prints the finished form; the password is not shown and does not end up in the shell
+history. It needs bash or zsh, and PHP under the name it has on your host (`php84`, for
+example):
+
+```bash
+read -rs P && P="$P" php -r 'echo str_replace("%", "%%", rawurlencode(getenv("P"))), PHP_EOL;'; unset P
+```
+
+Type the password and press Enter. When a step is missing, `composer install` stops at the
+end, in `cache:clear`:
+
+- Not encoded, and the password has a `/`, `?` or `#`: `Malformed database connection URL`.
+  Other characters can get past this point and fail when Davis connects to the database.
+- Encoded, but `%` not doubled: `You have requested a non-existent parameter "40ss"`, with
+  whatever stands between two `%` of the encoding. A password with only one encoded
+  character gets through by chance.
+
+This applies to `DATABASE_URL` only. `MAILER_DSN` is read without `resolve:`; a password in
+it is URL-encoded, and its `%` stay single.
 
 Everything else has a default in `.env`, explained there and in `README.md`. The settings
 this fork adds are all off by default:
