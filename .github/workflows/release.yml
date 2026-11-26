@@ -111,7 +111,8 @@ jobs:
           docker-php-ext-configure intl
           docker-php-ext-configure gd
           docker-php-ext-configure zip
-          docker-php-ext-install pdo pdo_mysql intl gd zip ldap
+          # -j: intl alone is a couple of minutes of C++ on one core
+          docker-php-ext-install -j"$(nproc)" pdo pdo_mysql intl gd zip ldap
 
       - name: Install Composer
         run: wget -qO - https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --quiet
