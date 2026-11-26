@@ -11,6 +11,26 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+## [5.6.3-st2.5] - 2026-11-26
+
+> **Updating needs no manual step.** No migration, no new setting. One thing changes for
+> whatever calls the API: an email address that another user already has is now refused.
+
+### Changed
+
+- **The API gives an email address to one user only.** `POST /api/v1/users/create` and
+  `PATCH /api/v1/users/{userId}` answer `409` with the message `Email Already In Use` when
+  another user has the address. Upper and lower case make no difference. Davis finds the
+  user an invitation or a reply is for by this address, and with two users on the same one
+  it cannot tell which of them is meant.
+  - The username is checked first. When username and address are both taken, the answer is
+    still `User Already Exists`, so a caller can tell the two apart: another username can be
+    tried, another address cannot.
+  - When a user is changed, the user itself does not count: sending a user the address it
+    already has is never an error.
+  - It is a rule of the API only. The dashboard does not check it, and users who already
+    share an address stay as they are and can still be changed.
+
 ## [5.6.3-st2.4] - 2026-11-26
 
 > **Updating changes nothing in the application.** No migration, no new setting. This

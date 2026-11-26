@@ -10,6 +10,10 @@ body is ignored. An administrator cannot be changed over the API. Use the dashbo
 The email address is the one sabre matches against the organizer and the attendees of an event.
 Events that are already stored are not rewritten: where they name the old address, they keep it.
 
+An email address can only be given to one user over the API: an address that another user has is
+refused. That is a rule of the API alone. The dashboard does not check it, users who already share
+an address stay as they are, and sending a user the address it already has is never an error.
+
 This endpoint is only available when `API_USER_MANAGEMENT_ENABLED` is set to `true`.
 
 **URL** : `/api/v1/users/:user_id`
@@ -207,6 +211,20 @@ or
 {
 	"status": "error",
 	"message": "Invalid Email",
+	"timestamp": "2026-01-23T15:01:33+01:00"
+}
+```
+
+**Condition** : If another user already has this email address (the comparison ignores case). Nothing is changed then, the display name included.
+
+**Code** : `409 CONFLICT`
+
+**Content** :
+
+```json
+{
+	"status": "error",
+	"message": "Email Already In Use",
 	"timestamp": "2026-01-23T15:01:33+01:00"
 }
 ```

@@ -308,6 +308,12 @@ class UserManagementController extends AbstractController
             if (!$this->isValidEmail($email, $validator)) {
                 return $this->error('Invalid Email', 400);
             }
+
+            // Only when the address really changes: sending the one the user already has is
+            // never an error, not even for users who shared an address before this rule
+            if (mb_strtolower($email) !== mb_strtolower((string) $principal->getEmail()) && $this->emailIsTaken($email, $principal)) {
+                return $this->error('Email Already In Use', 409);
+            }
         }
 
         $changed = [];

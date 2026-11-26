@@ -371,6 +371,71 @@ class ApiUserManagementTest extends WebTestCase
         $this->assertSame('test2@test.com', $principal->getEmail(), 'Nothing was changed');
     }
 
+    public function testUpdateUserRefusesAnEmailThatAnotherUserHas(): void
+    {
+        $client = static::createClient();
+        $url = '/api/v1/users/'.$this->userId('test_user2');
+
+        // test@test.com is the address of the other fixture user
+        foreach (['test@test.com', 'Test@TEST.com'] as $email) {
+            $data = $this->api($client, 'PATCH', $url, ['displayname' => 'Jane Doe', 'email' => $email]);
+
+            $this->assertResponseStatusCodeSame(409, $email);
+            $this->assertSame('error', $data['status']);
+            $this->assertSame('Email Already In Use', $data['message']);
+        }
+
+        $principal = $this->em()->getRepository(Principal::class)->findOneByUri('principals/test_user2');
+        $this->assertSame('test2@test.com', $principal->getEmail(), 'Nothing was changed');
+        $this->assertSame('Test User 2', $principal->getDisplayName(), 'Not the display name either');
+    }
+
+    /**
+     * The user who is changed does not count as "another user".
+     */
+    public function testUpdateUserAcceptsTheAddressTheUserAlreadyHas(): void
+    {
+        $client = static::createClient();
+        $url = '/api/v1/users/'.$this->userId('test_user2');
+
+        $data = $this->api($client, 'PATCH', $url, ['email' => 'test2@test.com']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('test2@test.com', $data['data']['email']);
+
+        // Changing nothing but the case of the own address is a change the user may make
+        $data = $this->api($client, 'PATCH', $url, ['email' => 'Test2@Test.com']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('Test2@Test.com', $data['data']['email']);
+    }
+
+    /**
+     * Users can share an address from before this rule, or because the dashboard does not check
+     * it. They are left alone: such a user can still be changed, and sending its address again
+     * is not an error.
+     */
+    public function testUsersWhoAlreadyShareAnAddressCanStillBeChanged(): void
+    {
+        $client = static::createClient();
+        $url = '/api/v1/users/'.$this->userId('test_user2');
+
+        $em = $this->em();
+        $em->getRepository(Principal::class)->findOneByUri('principals/test_user2')->setEmail('test@test.com');
+        $em->flush();
+
+        $data = $this->api($client, 'PATCH', $url, ['displayname' => 'Jane Doe', 'email' => 'test@test.com']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('Jane Doe', $data['data']['displayname']);
+        $this->assertSame('test@test.com', $data['data']['email']);
+
+        // Leaving the shared address for one of its own works too, and it cannot come back
+        $this->api($client, 'PATCH', $url, ['email' => 'jane.doe@example.org']);
+        $this->assertResponseStatusCodeSame(200);
+
+        $data = $this->api($client, 'PATCH', $url, ['email' => 'test@test.com']);
+        $this->assertResponseStatusCodeSame(409);
+        $this->assertSame('Email Already In Use', $data['message']);
+    }
+
     public function testUpdateUserOfAnUnknownIdIsNotFound(): void
     {
         $client = static::createClient();
