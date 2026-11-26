@@ -5,6 +5,9 @@ Creates a new user account, with its principal, a default calendar and a default
 The account has no usable password and is never an administrator: a password or an admin flag
 sent in the body is ignored. Use the dashboard for those.
 
+An email address can only be given to one user over the API. That is a rule of the API alone: the
+dashboard does not check it, and users who already share an address stay as they are.
+
 This endpoint is only available when `API_USER_MANAGEMENT_ENABLED` is set to `true`.
 
 **URL** : `/api/v1/users/create`
@@ -170,6 +173,20 @@ or
 {
 	"status": "error",
 	"message": "User Already Exists",
+	"timestamp": "2026-01-23T15:01:33+01:00"
+}
+```
+
+**Condition** : If another user already has this email address (the comparison ignores case). The username is checked first: when both are taken, the answer is `User Already Exists`.
+
+**Code** : `409 CONFLICT`
+
+**Content** :
+
+```json
+{
+	"status": "error",
+	"message": "Email Already In Use",
 	"timestamp": "2026-01-23T15:01:33+01:00"
 }
 ```

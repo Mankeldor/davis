@@ -123,6 +123,33 @@ class UserManagementController extends AbstractController
     }
 
     /**
+     * Tells if another user already has this email address, in any letter case.
+     *
+     * sabre finds the user an invitation or a reply is for by this address, so two users with
+     * the same one are a mix-up waiting to happen. Nothing in the schema forbids it, and the
+     * dashboard does not check it either: this is a rule of the API, for the accounts it
+     * creates and changes. Both sides of the comparison are lowered by the database, so that
+     * it gives the same answer on MySQL, PostgreSQL and SQLite.
+     *
+     * @param Principal|null $except the principal of the user who is being changed, which does not count
+     */
+    private function emailIsTaken(string $email, ?Principal $except = null): bool
+    {
+        $query = $this->principals->createQueryBuilder('p')
+            ->select('COUNT(p.id)')
+            ->where('LOWER(p.email) = LOWER(:email)')
+            ->andWhere('p.isMain = :isMain')
+            ->setParameter('email', $email)
+            ->setParameter('isMain', true);
+
+        if ($except) {
+            $query->andWhere('p.id != :except')->setParameter('except', $except->getId());
+        }
+
+        return (int) $query->getQuery()->getSingleScalarResult() > 0;
+    }
+
+    /**
      * A display name is kept trimmed. Returns null when nothing is left of it, or too much.
      */
     private function readDisplayName(mixed $value): ?string
@@ -178,6 +205,12 @@ class UserManagementController extends AbstractController
 
         if ($this->usernameIsTaken($username)) {
             return $this->error('User Already Exists', 409);
+        }
+
+        // After the username, and with a message of its own: a caller can try another username,
+        // but not another address
+        if ($this->emailIsTaken($email)) {
+            return $this->error('Email Already In Use', 409);
         }
 
         try {

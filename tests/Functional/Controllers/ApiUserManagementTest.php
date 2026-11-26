@@ -181,6 +181,56 @@ class ApiUserManagementTest extends WebTestCase
     }
 
     /**
+     * An invitation finds its user by the address, so the API gives an address to one user only.
+     * The message differs from the one for a username: a caller can pick another username, but
+     * not another address.
+     */
+    public function testCreateUserRefusesAnEmailThatAnotherUserHas(): void
+    {
+        $client = static::createClient();
+
+        // test2@test.com is the address of test_user2, test@test.com the one of the administrator
+        foreach (['test2@test.com', 'TEST2@Test.Com', 'test@test.com'] as $email) {
+            $data = $this->api($client, 'POST', '/api/v1/users/create', ['email' => $email] + self::NEW_USER);
+
+            $this->assertResponseStatusCodeSame(409, $email);
+            $this->assertSame('error', $data['status']);
+            $this->assertSame('Email Already In Use', $data['message']);
+        }
+
+        $em = $this->em();
+        $this->assertCount(2, $em->getRepository(User::class)->findAll(), 'Nothing was created');
+        $this->assertNull($em->getRepository(Principal::class)->findOneByUri('principals/jdoe'));
+    }
+
+    public function testCreateUserNamesTheUsernameWhenUsernameAndEmailAreBothTaken(): void
+    {
+        $client = static::createClient();
+
+        $data = $this->api($client, 'POST', '/api/v1/users/create', ['username' => 'test_user2', 'email' => 'test2@test.com'] + self::NEW_USER);
+
+        $this->assertResponseStatusCodeSame(409);
+        $this->assertSame('User Already Exists', $data['message']);
+    }
+
+    /**
+     * The proxy principals of a user have no address, and an address is free again once its
+     * user is gone.
+     */
+    public function testAnEmailIsFreeAgainAfterItsUserWasDeleted(): void
+    {
+        $client = static::createClient();
+
+        $this->api($client, 'DELETE', '/api/v1/users/'.$this->userId('test_user2'));
+        $this->assertResponseStatusCodeSame(200);
+
+        $data = $this->api($client, 'POST', '/api/v1/users/create', ['email' => 'test2@test.com'] + self::NEW_USER);
+
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('jdoe', $data['data']['username']);
+    }
+
+    /**
      * A principal can be left behind without its user. A new account with that name would pick up
      * whatever still hangs off that principal.
      */
