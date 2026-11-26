@@ -11,6 +11,13 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+## [5.6.3-st2.6] - 2026-11-26
+
+> **Documentation only. Davis behaves exactly as in 5.6.3-st2.5.** No code, no migration and
+> no setting changed. Updating from 5.6.3-st2.5 brings nothing but the new `INSTALL.md` and
+> the version number, so it can wait. A new installation should start from this version for
+> the instructions below.
+
 ### Added
 
 - **`INSTALL.md` explains `APP_TIMEZONE` and `BIRTHDAY_REMINDER_OFFSET`,** with examples:
