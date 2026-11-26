@@ -76,10 +76,34 @@ jobs:
       ADMIN_LOGIN: admin
       ADMIN_PASSWORD: test
     steps:
+      # Before the checkout, and that is the point. The PHP image has no git, and without git
+      # actions/checkout does not clone: it downloads an archive of the tag instead. That
+      # archive honours .gitattributes, so everything marked export-ignore is missing from
+      # it, and that is the tests, their configuration and .env.test.
+      - name: Install git
+        run: apk add --no-cache git
+
       - name: Checkout the tag
         uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ env.TAG }}
+
+      # PHPUnit without its configuration prints its help and fails without saying why. If
+      # the checkout ever comes without the tests again, this says so.
+      - name: Check that the tests were checked out
+        run: |
+          missing=""
+          for f in phpunit.xml.dist .env.test tests/bootstrap.php; do
+            [ -e "$f" ] || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then
+            echo "ERROR: These paths are missing from the checkout:$missing"
+            echo "       They are marked export-ignore in .gitattributes, so they are missing"
+            echo "       when the checkout is an archive and not a clone. actions/checkout"
+            echo "       falls back to an archive when there is no git in the container."
+            exit 1
+          fi
+          echo "--> The tests and their configuration are there."
 
       - name: Install MySQL / GD / ZIP / LDAP PHP extensions
         run: |

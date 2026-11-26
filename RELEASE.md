@@ -126,12 +126,29 @@ next number.
 that did not start). Start the workflow again for the same tag: Actions, "Release", "Run
 workflow", branch `st2`, and the tag in the field. The tag stays where it is.
 
+**The workflow file is wrong.** Fix `.github/workflows/release.yml` on the branch, push the
+branch and start the workflow again for the same tag with "Run workflow". A run started that
+way takes the workflow file from the branch and checks out the tag, so the tag does not have
+to move. Nothing in the archive changes either: `.github/` is not in it.
+
 **The scripts themselves are wrong.** They are taken from the tag, so a fix needs the next
 number.
+
+### What went wrong before
+
+- **The tests of the first release run found no tests.** The test job runs in the PHP image,
+  which has no git. Without git, `actions/checkout` downloads an archive of the tag instead
+  of cloning it, and that archive leaves out everything `.gitattributes` marks
+  `export-ignore`: `tests/`, `phpunit.xml.dist`, `.env.test`. PHPUnit printed its help and
+  the job failed with nothing but an exit code. The job now installs git before the
+  checkout and checks that the tests are there before it starts them. Keep both: any job
+  that needs a file that is not in the archive needs a real checkout.
 
 ## Settings of the repository
 
 - Actions have to be enabled for the repository. In a fork they are off until somebody turns
   them on in the "Actions" tab.
+- `st2` has to be the default branch of the repository. GitHub offers "Run workflow" only
+  for workflows whose file is on the default branch.
 - The workflow asks for `contents: write` for the job that creates the release page, and
   uses the token of the run. No personal token and no secret has to be stored.
