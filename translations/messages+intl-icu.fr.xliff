@@ -989,6 +989,18 @@
         <source>diagnostics.accounts_without_email.help</source>
         <target>Un compte sans adresse e-mail n'envoie jamais d'invitation, car c'est cette adresse que Davis compare à l'organisateur de l'événement. L'adresse de chaque compte doit être celle qu'envoie son client de calendrier.</target>
       </trans-unit>
+      <trans-unit id="dbgapi1" resname="diagnostics.api_user_management">
+        <source>diagnostics.api_user_management</source>
+        <target>Gestion des utilisateurs par l'API</target>
+      </trans-unit>
+      <trans-unit id="dbgapi2" resname="diagnostics.api_user_management.help">
+        <source>diagnostics.api_user_management.help</source>
+        <target>La clé d'API peut créer et supprimer des utilisateurs. Supprimer un utilisateur efface définitivement tous ses calendriers et carnets d'adresses : gardez la clé d'API côté serveur.</target>
+      </trans-unit>
+      <trans-unit id="dbgapi3" resname="diagnostics.api_user_management.disabled">
+        <source>diagnostics.api_user_management.disabled</source>
+        <target>L'API ne peut ni créer ni supprimer d'utilisateurs. Pour l'autoriser, définissez API_USER_MANAGEMENT_ENABLED=true.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

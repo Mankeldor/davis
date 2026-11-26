@@ -218,6 +218,25 @@ class DiagnosticsTest extends KernelTestCase
         $this->assertNull($check['link'], 'There is no page to link to');
     }
 
+    public function testUserManagementOverTheApiIsOffByDefaultAndSaysHowToTurnItOn(): void
+    {
+        $check = $this->checksOf($this->diagnosticsWith())['diagnostics.api_user_management'];
+
+        $this->assertSame(Diagnostics::INFO, $check['severity']);
+        $this->assertSame('diagnostics.value.disabled', $check['value']);
+        $this->assertSame('API_USER_MANAGEMENT_ENABLED=true', $check['command']);
+    }
+
+    public function testUserManagementOverTheApiIsShownWhenOn(): void
+    {
+        $check = $this->checksOf($this->diagnosticsWith(['apiUserManagementEnabled' => true]))['diagnostics.api_user_management'];
+
+        $this->assertSame(Diagnostics::INFO, $check['severity'], 'Turning it on is a choice, not a problem');
+        $this->assertSame('diagnostics.value.enabled', $check['value']);
+        $this->assertSame('diagnostics.api_user_management.help', $check['fix']);
+        $this->assertNull($check['command']);
+    }
+
     public function testTheAuthBypassIsShownWhenOn(): void
     {
         $diagnostics = $this->diagnosticsWith(['adminAuthBypass' => 'true']);

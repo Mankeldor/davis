@@ -437,6 +437,14 @@ For user and calendar management there is an API endpoint. See [the API document
 >
 > The API endpoint requires an environment variable `API_KEY` set to a secret key that you will use in the `X-Davis-API-Token` header of your requests to authenticate. You can generate it with `bin/console api:generate`
 
+```shell
+API_USER_MANAGEMENT_ENABLED=false
+```
+
+By default the API reads users and manages their calendars and shares. Set `API_USER_MANAGEMENT_ENABLED=true` to also let it create and delete users, for example when another system is where accounts are managed. It is a separate setting because it makes the API key more powerful: deleting a user removes all of their calendars and address books, and it cannot be undone. When it is off, these endpoints answer `404`.
+
+A user created over the API has no usable password and is never an administrator, and an administrator cannot be deleted over the API. Each user created or deleted this way is written to the log file.
+
 ## Webserver Configuration Examples
 
 ### Example Caddy 2 configuration

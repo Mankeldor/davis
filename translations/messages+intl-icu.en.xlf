@@ -989,6 +989,18 @@
         <source>diagnostics.accounts_without_email.help</source>
         <target>An account with no email address never sends an invitation, because the address is what Davis matches against the event organiser. Each account's address has to be the one its calendar client sends.</target>
       </trans-unit>
+      <trans-unit id="dbgapi1" resname="diagnostics.api_user_management">
+        <source>diagnostics.api_user_management</source>
+        <target>User management over the API</target>
+      </trans-unit>
+      <trans-unit id="dbgapi2" resname="diagnostics.api_user_management.help">
+        <source>diagnostics.api_user_management.help</source>
+        <target>The API key can create and delete users. Deleting a user removes all of their calendars and address books for good: keep the API key server-side.</target>
+      </trans-unit>
+      <trans-unit id="dbgapi3" resname="diagnostics.api_user_management.disabled">
+        <source>diagnostics.api_user_management.disabled</source>
+        <target>The API cannot create or delete users. To allow it, set API_USER_MANAGEMENT_ENABLED=true.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

@@ -40,6 +40,7 @@ final class Diagnostics
         private ?string $mailerDsn,
         private bool $appKeysEnabled = false,
         private string $adminAuthBypass = 'false',
+        private bool $apiUserManagementEnabled = false,
     ) {
     }
 
@@ -64,6 +65,7 @@ final class Diagnostics
                 $this->auth(),
                 $this->adminAuthBypass(),
                 $this->appKeys(),
+                $this->apiUserManagement(),
                 $this->authExtension(),
             ],
             'diagnostics.bucket.scheduling' => [
@@ -280,6 +282,19 @@ final class Diagnostics
         }
 
         return $this->check(self::INFO, 'diagnostics.app_keys', (string) $count, 'diagnostics.app_keys.help', null, $this->router->generate('app_key_index'));
+    }
+
+    /**
+     * With this on, the API key can create and delete users, which is more than the calendar
+     * management it does otherwise. We show it next to the other ways into an account.
+     */
+    private function apiUserManagement(): array
+    {
+        if (!$this->apiUserManagementEnabled) {
+            return $this->check(self::INFO, 'diagnostics.api_user_management', 'diagnostics.value.disabled', 'diagnostics.api_user_management.disabled', 'API_USER_MANAGEMENT_ENABLED=true');
+        }
+
+        return $this->check(self::INFO, 'diagnostics.api_user_management', 'diagnostics.value.enabled', 'diagnostics.api_user_management.help');
     }
 
     /**

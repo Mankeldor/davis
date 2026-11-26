@@ -989,6 +989,18 @@
         <source>diagnostics.accounts_without_email.help</source>
         <target>Ein Konto ohne E-Mail-Adresse versendet nie eine Einladung, denn anhand dieser Adresse gleicht Davis den Termin-Organisator ab. Die Adresse jedes Kontos muss diejenige sein, die sein Kalenderprogramm sendet.</target>
       </trans-unit>
+      <trans-unit id="dbgapi1" resname="diagnostics.api_user_management">
+        <source>diagnostics.api_user_management</source>
+        <target>Benutzerverwaltung über die API</target>
+      </trans-unit>
+      <trans-unit id="dbgapi2" resname="diagnostics.api_user_management.help">
+        <source>diagnostics.api_user_management.help</source>
+        <target>Der API-Schlüssel kann Benutzer anlegen und löschen. Das Löschen eines Benutzers entfernt alle seine Kalender und Adressbücher endgültig: Bewahren Sie den API-Schlüssel serverseitig auf.</target>
+      </trans-unit>
+      <trans-unit id="dbgapi3" resname="diagnostics.api_user_management.disabled">
+        <source>diagnostics.api_user_management.disabled</source>
+        <target>Die API kann keine Benutzer anlegen oder löschen. Um das zu erlauben, setzen Sie API_USER_MANAGEMENT_ENABLED=true.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

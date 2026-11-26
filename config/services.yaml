@@ -20,6 +20,8 @@ parameters:
     default_webdav_public_dir_writable: "false"
     app_keys_enabled: "%env(bool:default:default_app_keys_enabled:APP_KEYS_ENABLED)%"
     default_app_keys_enabled: "false"
+    api_user_management_enabled: "%env(bool:default:default_api_user_management_enabled:API_USER_MANAGEMENT_ENABLED)%"
+    default_api_user_management_enabled: "false"
 
 services:
     # default configuration for services in *this* file
@@ -58,6 +60,7 @@ services:
             $inviteAddress: "%env(INVITE_FROM_ADDRESS)%"
             $mailerDsn: "%env(MAILER_DSN)%"
             $appKeysEnabled: "%app_keys_enabled%"
+            $apiUserManagementEnabled: "%api_user_management_enabled%"
             $adminAuthBypass: "%admin_auth_bypass%"
 
     App\Command\MailTestCommand:

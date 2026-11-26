@@ -21,6 +21,15 @@ Each endpoint displays information related to the User:
 * [Get Users](v1/users/all.md) : `GET /api/v1/users`
 * [Get User Details](v1/users/details.md) : `GET /api/v1/users/:user_id`
 
+Creating and deleting users is off by default. Set `API_USER_MANAGEMENT_ENABLED=true` to turn these two endpoints on; when they are off they answer `404`.
+
+* [Create User](v1/users/create.md) : `POST /api/v1/users/create`
+* [Delete User](v1/users/delete.md) : `DELETE /api/v1/users/:user_id`
+
+> [!WARNING]
+>
+> With these endpoints on, whoever holds the API key can delete any user that is not an administrator, with all of its calendars and address books. There is no way to undo it other than restoring a backup. Keep the key on the server side, and if you can, only let the service that needs it reach `/api`.
+
 #### Calendars related
 
 Endpoints for viewing and modifying user calendars.
