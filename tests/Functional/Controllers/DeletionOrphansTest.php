@@ -156,6 +156,34 @@ class DeletionOrphansTest extends WebTestCase
         $this->assertSame([], $em->getRepository(AddressBook::class)->findBy(['principalUri' => Principal::PREFIX.'test_user']));
     }
 
+    /**
+     * An account can lose its principal (an interrupted creation, a row removed by hand). It must
+     * still be possible to delete it, and what is left of it has to go too.
+     */
+    public function testDeletingAUserWhosePrincipalIsMissing(): void
+    {
+        $client = static::createClient();
+        $client->loginUser(new AdminUser('admin', 'test'));
+
+        $userId = $this->userId($client, 'test_user2');
+
+        $em = $this->em();
+        $em->remove($em->getRepository(Principal::class)->findOneByUri(Principal::PREFIX.'test_user2'));
+        $em->flush();
+
+        $this->storeProperty('calendars/test_user2/default');
+
+        $this->postAdmin($client, '/users/delete/'.$userId);
+        $this->assertResponseRedirects('/users/');
+
+        $em = $this->em();
+        $this->assertNull($em->getRepository(User::class)->findOneByUsername('test_user2'));
+        $this->assertNull($em->getRepository(Principal::class)->findOneByUri(Principal::PREFIX.'test_user2'.Principal::READ_PROXY_SUFFIX));
+        $this->assertSame([], $em->getRepository(CalendarInstance::class)->findBy(['principalUri' => Principal::PREFIX.'test_user2']));
+        $this->assertSame([], $em->getRepository(AddressBook::class)->findBy(['principalUri' => Principal::PREFIX.'test_user2']));
+        $this->assertNotContains('calendars/test_user2/default', $this->propertyPaths());
+    }
+
     public function testDeletingACalendarRemovesItsStoredProperties(): void
     {
         $client = static::createClient();

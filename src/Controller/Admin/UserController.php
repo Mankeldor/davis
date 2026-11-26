@@ -3,15 +3,12 @@
 namespace App\Controller\Admin;
 
 use App\Entity\AddressBook;
-use App\Entity\AppKey;
 use App\Entity\Calendar;
 use App\Entity\CalendarInstance;
-use App\Entity\CalendarSubscription;
 use App\Entity\Principal;
-use App\Entity\PropertyStorage;
-use App\Entity\SchedulingObject;
 use App\Entity\User;
 use App\Form\UserType;
+use App\Services\UserRemover;
 use App\Services\Utils;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
@@ -128,83 +125,13 @@ class UserController extends AbstractController
     }
 
     #[Route('/delete/{userId}', name: 'delete', methods: ['POST'])]
-    public function userDelete(ManagerRegistry $doctrine, Request $request, #[MapEntity(id: 'userId')] User $user, int $userId, TranslatorInterface $trans): Response
+    public function userDelete(UserRemover $userRemover, Request $request, #[MapEntity(id: 'userId')] User $user, int $userId, TranslatorInterface $trans): Response
     {
         if (!$this->isCsrfTokenValid('admin_action', $request->getPayload()->getString('_token'))) {
             throw $this->createAccessDeniedException('Invalid CSRF token.');
         }
 
-        $entityManager = $doctrine->getManager();
-        $entityManager->remove($user);
-
-        $principal = $doctrine->getRepository(Principal::class)->findOneByUri($user->getPrincipalUri());
-        $principalProxyRead = $doctrine->getRepository(Principal::class)->findOneByUri($principal->getUri().Principal::READ_PROXY_SUFFIX);
-        $principalProxyWrite = $doctrine->getRepository(Principal::class)->findOneByUri($principal->getUri().Principal::WRITE_PROXY_SUFFIX);
-
-        $entityManager->remove($principal);
-
-        if ($principalProxyRead) {
-            $entityManager->remove($principalProxyRead);
-        }
-
-        if ($principalProxyWrite) {
-            $entityManager->remove($principalProxyWrite);
-        }
-
-        $principalUri = $user->getPrincipalUri();
-
-        // Remove calendars and addressbooks
-        $calendars = $doctrine->getRepository(CalendarInstance::class)->findByPrincipalUriWithCalendars($principalUri);
-        foreach ($calendars ?? [] as $instance) {
-            // We're only removing the calendar objects / changes / and calendar if the deleted user is an owner,
-            // which means that the underlying calendar instance should not have another principal as owner.
-            $hasDifferentOwner = $doctrine->getRepository(CalendarInstance::class)->hasDifferentOwner($instance->getCalendar()->getId(), $principalUri);
-            if (!$hasDifferentOwner) {
-                foreach ($instance->getCalendar()->getObjects() ?? [] as $object) {
-                    $entityManager->remove($object);
-                }
-                foreach ($instance->getCalendar()->getChanges() ?? [] as $change) {
-                    $entityManager->remove($change);
-                }
-                // We need to remove the shared versions of this calendar, too
-                foreach ($instance->getCalendar()->getInstances() ?? [] as $instances) {
-                    $entityManager->remove($instances);
-                }
-                $entityManager->remove($instance->getCalendar());
-            }
-            $entityManager->remove($instance);
-        }
-        $calendarsSubscriptions = $doctrine->getRepository(CalendarSubscription::class)->findByPrincipalUri($principalUri);
-        foreach ($calendarsSubscriptions ?? [] as $subscription) {
-            $entityManager->remove($subscription);
-        }
-        $schedulingObjects = $doctrine->getRepository(SchedulingObject::class)->findByPrincipalUri($principalUri);
-        foreach ($schedulingObjects ?? [] as $object) {
-            $entityManager->remove($object);
-        }
-
-        $addressbooks = $doctrine->getRepository(AddressBook::class)->findByPrincipalUri($principalUri);
-        foreach ($addressbooks ?? [] as $addressbook) {
-            foreach ($addressbook->getCards() ?? [] as $card) {
-                $entityManager->remove($card);
-            }
-            foreach ($addressbook->getChanges() ?? [] as $change) {
-                $entityManager->remove($change);
-            }
-            $entityManager->remove($addressbook);
-        }
-
-        // Remove the user from the app keys that list them by name.
-        $doctrine->getRepository(AppKey::class)->forgetUser($user->getUsername(), new \DateTimeImmutable());
-
-        $entityManager->flush();
-
-        // After the flush, so the properties are still there if the flush fails
-        $doctrine->getRepository(PropertyStorage::class)->deletePathsAndTheirChildren([
-            $principalUri,
-            'calendars/'.$user->getUsername(),
-            'addressbooks/'.$user->getUsername(),
-        ]);
+        $userRemover->remove($user);
 
         $this->addFlash('success', $trans->trans('user.deleted'));
 
