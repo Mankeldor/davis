@@ -13,10 +13,19 @@ use Doctrine\Persistence\ObjectManager;
 
 class AppFixtures extends Fixture
 {
+    /**
+     * The fixtures are loaded again before every single test. With the default cost, the four
+     * hashes below took most of that time, and most of the run time of the whole suite. Test
+     * data does not need an expensive hash: the tests check that the right password and the
+     * right secret are accepted and the wrong ones are not, and that does not depend on the
+     * cost. The code that hashes real passwords and secrets is not touched by this.
+     */
+    private const HASH_OPTIONS = ['cost' => 4];
+
     public function load(ObjectManager $manager): void
     {
         // Test User 1
-        $hash = password_hash('password', PASSWORD_DEFAULT);
+        $hash = password_hash('password', PASSWORD_BCRYPT, self::HASH_OPTIONS);
         $user = (new User())
             ->setUsername('test_user')
             ->setPassword($hash);
@@ -60,7 +69,7 @@ class AppFixtures extends Fixture
         $manager->flush();
 
         // Test User 2 - For API testing
-        $hash = password_hash('password2', PASSWORD_DEFAULT);
+        $hash = password_hash('password2', PASSWORD_BCRYPT, self::HASH_OPTIONS);
         $user = (new User())
             ->setUsername('test_user2')
             ->setPassword($hash);
@@ -105,12 +114,12 @@ class AppFixtures extends Fixture
 
         $appKey = AppKey::create('Test app', [AppKey::ALL_USERS])
             ->setAppId('app_test')
-            ->setSecretHash(password_hash('app-secret', PASSWORD_DEFAULT));
+            ->setSecretHash(password_hash('app-secret', PASSWORD_BCRYPT, self::HASH_OPTIONS));
         $manager->persist($appKey);
 
         $revokedAppKey = AppKey::create('Revoked app', ['test_user'])
             ->setAppId('app_revoked')
-            ->setSecretHash(password_hash('app-secret', PASSWORD_DEFAULT))
+            ->setSecretHash(password_hash('app-secret', PASSWORD_BCRYPT, self::HASH_OPTIONS))
             ->setRevokedAt(new \DateTimeImmutable('-1 day'));
         $manager->persist($revokedAppKey);
 
