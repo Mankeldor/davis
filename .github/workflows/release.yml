@@ -1,0 +1,141 @@
+name: Release
+
+# A tag of this fork (vX.Y.Z-st2.N) releases it: the archive of the tag, its checksum and a
+# page that says how to install and update. The steps are scripts in .github/release, so they
+# can be run before tagging (see RELEASE.md).
+#
+# A run that failed can be repeated for the same tag with "Run workflow", without moving the
+# tag. Repeating a run that succeeded uploads the same files again and rewrites the page.
+
+on:
+  push:
+    tags:
+      - 'v*-st2.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'An existing tag to release, for example v5.6.3-st2.3'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  # First, and on its own: without a changelog section for the version the release page would
+  # say nothing, and at this point nothing is published and the tag can still be taken back.
+  check:
+    name: Changelog and version
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Check that the tag can be released
+        run: sh .github/release/check.sh "$TAG"
+
+  # The same steps as the PHPUnit job of the CI, for the PHP and the database an install from
+  # the archive is most likely to run on. A tag whose tests fail is not released.
+  tests:
+    name: PHPUnit (PHP 8.4, mysql)
+    needs: check
+    runs-on: ubuntu-24.04
+    container:
+      image: php:8.4-alpine
+      options: >-
+        --tmpfs /tmp:exec
+        --tmpfs /var/tmp:exec
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          # Corresponds to what is in .env.test
+          MYSQL_DATABASE: davis_test
+          MYSQL_USER: davis
+          MYSQL_PASSWORD: davis
+          MYSQL_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 3306:3306
+    env:
+      COMPOSER_ALLOW_SUPERUSER: '1'
+      SYMFONY_DEPRECATIONS_HELPER: max[self]=0
+      ADMIN_LOGIN: admin
+      ADMIN_PASSWORD: test
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Install MySQL / GD / ZIP / LDAP PHP extensions
+        run: |
+          apk add $PHPIZE_DEPS icu-libs icu-dev libpng-dev libzip-dev openldap-dev
+          docker-php-ext-configure intl
+          docker-php-ext-configure gd
+          docker-php-ext-configure zip
+          docker-php-ext-install pdo pdo_mysql intl gd zip ldap
+
+      - name: Install Composer
+        run: wget -qO - https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --quiet
+
+      - name: Install dependencies with Composer
+        run: composer install --no-progress --no-interaction --ansi
+
+      - name: Run tests with PHPUnit (MySQL)
+        env:
+          DATABASE_URL: mysql://davis:davis@mysql:3306/davis_test
+        run: vendor/bin/phpunit --process-isolation --colors=always
+
+  release:
+    name: Archive and release page
+    needs: [check, tests]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Check that the tag can be released
+        run: sh .github/release/check.sh "$TAG"
+
+      # The archive is checked in both directions before it is packed, and the run stops
+      # there if a file is missing or one is in it that should not be.
+      - name: Build the archive and its checksum
+        run: sh .github/release/build-package.sh "$TAG"
+
+      - name: Write the release notes
+        run: |
+          sh .github/release/release-notes.sh "$TAG"
+          cat dist/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      # With the token of this run, which can only write to this repository. The notes are
+      # handed over as a file: as an argument, every backtick in them would be run by the shell.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NAME="davis-${TAG}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "dist/${NAME}.tar.gz" "dist/${NAME}.tar.gz.sha256" --clobber
+            gh release edit "$TAG" --title "Davis ${TAG#v}" --notes-file dist/release-notes.md
+          else
+            gh release create "$TAG" "dist/${NAME}.tar.gz" "dist/${NAME}.tar.gz.sha256" \
+              --verify-tag --title "Davis ${TAG#v}" --notes-file dist/release-notes.md
+          fi
