@@ -1,0 +1,15 @@
+# What `git archive` (and so the archive of a tag) leaves out: everything that is only needed
+# to develop, test or build images, not to run an install from the archive.
+/.dockerignore      export-ignore
+/.env.test          export-ignore
+/.gitattributes     export-ignore
+/.github            export-ignore
+/.gitignore         export-ignore
+/.hadolint.yaml     export-ignore
+/.php-cs-fixer.php  export-ignore
+/_screenshots       export-ignore
+/bin/phpunit        export-ignore
+/docker             export-ignore
+/docs               export-ignore
+/phpunit.xml.dist   export-ignore
+/tests              export-ignore
