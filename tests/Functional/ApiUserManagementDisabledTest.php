@@ -46,6 +46,7 @@ class ApiUserManagementDisabledTest extends WebTestCase
 
         $requests = [
             ['POST', '/api/v1/users/create', '{"username":"jdoe","displayname":"John Doe","email":"jdoe@example.org"}'],
+            ['PATCH', '/api/v1/users/'.$userId, '{"displayname":"Renamed"}'],
             ['DELETE', '/api/v1/users/'.$userId, null],
             ['POST', '/api/v1/users/'.$userId.'/app_keys/create', '{"name":"Phone"}'],
             ['POST', '/api/v1/users/'.$userId.'/app_keys/app_test/revoke', null],
@@ -61,6 +62,10 @@ class ApiUserManagementDisabledTest extends WebTestCase
             $this->assertSame('error', $data['status']);
             $this->assertSame('User management over the API is disabled', $data['message']);
         }
+
+        // The details endpoint is not part of user management, and shows nothing was renamed
+        $client->request('GET', '/api/v1/users/'.$userId, [], [], $this->headers());
+        $this->assertSame('Test User 2', json_decode((string) $client->getResponse()->getContent(), true)['data']['displayname']);
 
         $users = static::getContainer()->get('doctrine.orm.entity_manager')->getRepository(User::class);
         $this->assertNull($users->findOneByUsername('jdoe'));
@@ -80,6 +85,9 @@ class ApiUserManagementDisabledTest extends WebTestCase
         $client = static::createClient();
 
         $client->request('POST', '/api/v1/users/create', [], [], ['HTTP_ACCEPT' => 'application/json'], '{}');
+        $this->assertResponseStatusCodeSame(401);
+
+        $client->request('PATCH', '/api/v1/users/1', [], [], ['HTTP_ACCEPT' => 'application/json'], '{}');
         $this->assertResponseStatusCodeSame(401);
 
         $client->request('DELETE', '/api/v1/users/1', [], [], ['HTTP_ACCEPT' => 'application/json']);

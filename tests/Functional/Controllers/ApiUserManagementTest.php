@@ -201,6 +201,182 @@ class ApiUserManagementTest extends WebTestCase
         }
     }
 
+    public function testUpdateUser(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user2');
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => '  Jane Doe  ', 'email' => 'jane.doe@example.org']);
+
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('success', $data['status']);
+        $this->assertArrayHasKey('timestamp', $data);
+        $this->assertSame($userId, $data['data']['user_id']);
+        $this->assertSame('principals/test_user2', $data['data']['uri']);
+        $this->assertSame('test_user2', $data['data']['username']);
+        $this->assertSame('Jane Doe', $data['data']['displayname'], 'The display name is trimmed');
+        $this->assertSame('jane.doe@example.org', $data['data']['email']);
+
+        // What the details endpoint says afterwards is what was answered
+        $details = $this->api($client, 'GET', '/api/v1/users/'.$userId);
+        $this->assertResponseIsSuccessful();
+        $this->assertSame($data['data'], $details['data']);
+
+        $principal = $this->em()->getRepository(Principal::class)->findOneByUri('principals/test_user2');
+        $this->assertSame('Jane Doe', $principal->getDisplayName());
+        $this->assertSame('jane.doe@example.org', $principal->getEmail());
+    }
+
+    public function testUpdateUserChangesOnlyWhatIsSent(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user2');
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => 'Jane Doe']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('Jane Doe', $data['data']['displayname']);
+        $this->assertSame('test2@test.com', $data['data']['email'], 'The address is as the fixtures set it');
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['email' => 'jane.doe@example.org']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('Jane Doe', $data['data']['displayname'], 'The name from the first request is kept');
+        $this->assertSame('jane.doe@example.org', $data['data']['email']);
+
+        // Sending what is already there is not an error
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => 'Jane Doe', 'email' => 'jane.doe@example.org']);
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('Jane Doe', $data['data']['displayname']);
+    }
+
+    /**
+     * The username is in the principal URI and in every calendar URL, and the rest would be a
+     * way around the dashboard.
+     */
+    public function testUpdateUserChangesNothingButTheNameAndTheAddress(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user2');
+        $this->assertTrue($this->passwordLogsIn('test_user2', 'password2'));
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, [
+            'displayname' => 'Jane Doe',
+            'username' => 'jane',
+            'uri' => 'principals/jane',
+            'is_admin' => true,
+            'isAdmin' => true,
+            'password' => 'chosen-password',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $this->assertSame('test_user2', $data['data']['username']);
+        $this->assertSame('principals/test_user2', $data['data']['uri']);
+
+        $em = $this->em();
+        $this->assertSame($userId, $this->userId('test_user2'));
+        $this->assertNull($em->getRepository(User::class)->findOneByUsername('jane'));
+        $this->assertNull($em->getRepository(Principal::class)->findOneByUri('principals/jane'));
+        $this->assertFalse($em->getRepository(Principal::class)->findOneByUri('principals/test_user2')->getIsAdmin());
+        $this->assertCount(1, $em->getRepository(CalendarInstance::class)->findBy(['principalUri' => 'principals/test_user2']));
+
+        $this->assertTrue($this->passwordLogsIn('test_user2', 'password2'), 'The password is untouched');
+        $this->assertFalse($this->passwordLogsIn('test_user2', 'chosen-password'));
+    }
+
+    public function testUpdateUserRejectsInvalidValues(): void
+    {
+        $client = static::createClient();
+        $url = '/api/v1/users/'.$this->userId('test_user2');
+
+        foreach (['', '   ', str_repeat('a', 256), 42, null, ['Jane']] as $displayName) {
+            // A valid address next to it must not be applied on its own
+            $data = $this->api($client, 'PATCH', $url, ['displayname' => $displayName, 'email' => 'jane.doe@example.org']);
+
+            $this->assertResponseStatusCodeSame(400, var_export($displayName, true));
+            $this->assertSame('Invalid Display Name', $data['message']);
+        }
+
+        foreach (['', 'not-an-address', 'jdoe@', str_repeat('a', 250).'@example.org', 42, null] as $email) {
+            $data = $this->api($client, 'PATCH', $url, ['displayname' => 'Jane Doe', 'email' => $email]);
+
+            $this->assertResponseStatusCodeSame(400, var_export($email, true));
+            $this->assertSame('Invalid Email', $data['message']);
+        }
+
+        foreach ([[], ['username' => 'jane'], ['display_name' => 'Jane Doe']] as $body) {
+            $client->request('PATCH', $url, [], [], ['HTTP_X_DAVIS_API_TOKEN' => $_ENV['API_KEY']], (string) json_encode($body, JSON_FORCE_OBJECT));
+
+            $this->assertResponseStatusCodeSame(400, (string) json_encode($body));
+            $this->assertSame('Nothing to Update', json_decode((string) $client->getResponse()->getContent(), true)['message']);
+        }
+
+        foreach (['{not json', '"a string"', ''] as $body) {
+            $client->request('PATCH', $url, [], [], ['HTTP_X_DAVIS_API_TOKEN' => $_ENV['API_KEY']], $body);
+
+            $this->assertResponseStatusCodeSame(400, $body);
+            $this->assertSame('Invalid JSON', json_decode((string) $client->getResponse()->getContent(), true)['message']);
+        }
+
+        $principal = $this->em()->getRepository(Principal::class)->findOneByUri('principals/test_user2');
+        $this->assertSame('Test User 2', $principal->getDisplayName(), 'Nothing was changed');
+        $this->assertSame('test2@test.com', $principal->getEmail(), 'Nothing was changed');
+    }
+
+    public function testUpdateUserOfAnUnknownIdIsNotFound(): void
+    {
+        $client = static::createClient();
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/999999', ['displayname' => 'Jane Doe']);
+
+        $this->assertResponseStatusCodeSame(404);
+        $this->assertSame('User Not Found', $data['message']);
+    }
+
+    public function testUpdateUserWithoutAPrincipalIsNotFound(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user2');
+
+        $em = $this->em();
+        $em->remove($em->getRepository(Principal::class)->findOneByUri(Principal::PREFIX.'test_user2'));
+        $em->flush();
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => 'Jane Doe']);
+
+        $this->assertResponseStatusCodeSame(404);
+        $this->assertSame('Principal Not Found', $data['message']);
+    }
+
+    public function testAnAdministratorCannotBeChangedOverTheApi(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user');
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => 'Jane Doe', 'email' => 'jane.doe@example.org']);
+
+        $this->assertResponseStatusCodeSame(403);
+        $this->assertSame('error', $data['status']);
+        $this->assertSame('Admin Users Cannot Be Changed Over the API', $data['message']);
+
+        $principal = $this->em()->getRepository(Principal::class)->findOneByUri('principals/test_user');
+        $this->assertSame('Test User', $principal->getDisplayName());
+        $this->assertSame('test@test.com', $principal->getEmail());
+    }
+
+    public function testUpdateUserNeedsTheApiKey(): void
+    {
+        $client = static::createClient();
+        $userId = $this->userId('test_user2');
+
+        $data = $this->api($client, 'PATCH', '/api/v1/users/'.$userId, ['displayname' => 'Jane Doe'], false);
+        $this->assertResponseStatusCodeSame(401);
+        $this->assertSame('Missing X-Davis-API-Token header', $data['message']);
+
+        $client->request('PATCH', '/api/v1/users/'.$userId, [], [], ['HTTP_X_DAVIS_API_TOKEN' => 'not-the-key'], '{"displayname":"Jane Doe"}');
+        $this->assertResponseStatusCodeSame(401);
+
+        $this->assertSame('Test User 2', $this->em()->getRepository(Principal::class)->findOneByUri('principals/test_user2')->getDisplayName());
+    }
+
     public function testDeleteUser(): void
     {
         $client = static::createClient();

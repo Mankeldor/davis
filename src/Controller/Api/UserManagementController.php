@@ -123,6 +123,26 @@ class UserManagementController extends AbstractController
     }
 
     /**
+     * A display name is kept trimmed. Returns null when nothing is left of it, or too much.
+     */
+    private function readDisplayName(mixed $value): ?string
+    {
+        $displayName = is_string($value) ? trim($value) : '';
+
+        return '' === $displayName || mb_strlen($displayName) > 255 ? null : $displayName;
+    }
+
+    /**
+     * Same rules as the dashboard: without an address, sabre never sends an invitation.
+     *
+     * @psalm-assert-if-true string $value
+     */
+    private function isValidEmail(mixed $value, ValidatorInterface $validator): bool
+    {
+        return is_string($value) && 0 === count($validator->validate($value, [new Assert\NotBlank(), new Assert\Email(), new Assert\Length(max: 255)]));
+    }
+
+    /**
      * Creates a user with its principal, default calendar and default address book.
      *
      * @param Request $request The HTTP POST request
@@ -146,15 +166,13 @@ class UserManagementController extends AbstractController
             return $this->error('Invalid Username', 400);
         }
 
-        $displayName = $data['displayname'] ?? null;
-        $displayName = is_string($displayName) ? trim($displayName) : '';
-        if ('' === $displayName || mb_strlen($displayName) > 255) {
+        $displayName = $this->readDisplayName($data['displayname'] ?? null);
+        if (null === $displayName) {
             return $this->error('Invalid Display Name', 400);
         }
 
-        // Same rules as the dashboard: without an address, sabre never sends an invitation
         $email = $data['email'] ?? null;
-        if (!is_string($email) || count($validator->validate($email, [new Assert\NotBlank(), new Assert\Email(), new Assert\Length(max: 255)])) > 0) {
+        if (!$this->isValidEmail($email, $validator)) {
             return $this->error('Invalid Email', 400);
         }
 
@@ -194,6 +212,100 @@ class UserManagementController extends AbstractController
                     'id' => $calendar->getId(),
                     'uri' => $calendar->getUri(),
                 ],
+            ],
+            'timestamp' => date('c'),
+        ], 200);
+    }
+
+    /**
+     * Changes the display name and the email address of a user. Only the fields that are sent
+     * change. The username is not one of them: the principal and every calendar and address
+     * book URL are built from it.
+     *
+     * @param Request $request The HTTP PATCH request
+     * @param int     $userId  The ID of the user to change
+     *
+     * @return JsonResponse A JSON response describing the user after the change, or the failure
+     */
+    #[Route('/users/{userId}', name: 'user_update', methods: ['PATCH'], requirements: ['userId' => '\d+'])]
+    public function updateUser(Request $request, int $userId, ValidatorInterface $validator): JsonResponse
+    {
+        if (!$this->feature->isEnabled()) {
+            return $this->disabled();
+        }
+
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+        if (!$user) {
+            return $this->error('User Not Found', 404);
+        }
+
+        // The display name and the email address live on the principal
+        $principal = $this->principals->findOneByUri($user->getPrincipalUri());
+        if (!$principal) {
+            return $this->error('Principal Not Found', 404);
+        }
+
+        if ($principal->getIsAdmin()) {
+            return $this->error('Admin Users Cannot Be Changed Over the API', 403);
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (JSON_ERROR_NONE !== json_last_error() || !is_array($data)) {
+            return $this->error('Invalid JSON', 400);
+        }
+
+        $hasDisplayName = array_key_exists('displayname', $data);
+        $hasEmail = array_key_exists('email', $data);
+        if (!$hasDisplayName && !$hasEmail) {
+            return $this->error('Nothing to Update', 400);
+        }
+
+        // Both are checked before either is set, so a request is applied as a whole or not at all
+        $displayName = $principal->getDisplayName();
+        if ($hasDisplayName) {
+            $displayName = $this->readDisplayName($data['displayname']);
+            if (null === $displayName) {
+                return $this->error('Invalid Display Name', 400);
+            }
+        }
+
+        $email = $principal->getEmail();
+        if ($hasEmail) {
+            $email = $data['email'];
+            if (!$this->isValidEmail($email, $validator)) {
+                return $this->error('Invalid Email', 400);
+            }
+        }
+
+        $changed = [];
+        if ($displayName !== $principal->getDisplayName()) {
+            $changed[] = 'displayname';
+        }
+        if ($email !== $principal->getEmail()) {
+            $changed[] = 'email';
+        }
+
+        try {
+            $principal->setDisplayName($displayName)->setEmail($email);
+            $this->entityManager->flush();
+        } catch (\Exception) {
+            return $this->error('Failed to Update User', 500);
+        }
+
+        if ($changed) {
+            // Which fields, not their values: the log is not the place for names and addresses
+            $this->logger->notice('API: user updated', ['username' => $user->getUsername(), 'user_id' => $userId, 'changed' => $changed]);
+        }
+
+        return $this->json([
+            'status' => 'success',
+            'data' => [
+                'user_id' => $user->getId(),
+                'principal_id' => $principal->getId(),
+                'uri' => $principal->getUri(),
+                'username' => $user->getUsername(),
+                'displayname' => $principal->getDisplayName(),
+                'email' => $principal->getEmail(),
             ],
             'timestamp' => date('c'),
         ], 200);

@@ -21,9 +21,10 @@ Each endpoint displays information related to the User:
 * [Get Users](v1/users/all.md) : `GET /api/v1/users`
 * [Get User Details](v1/users/details.md) : `GET /api/v1/users/:user_id`
 
-Creating and deleting users is off by default. Set `API_USER_MANAGEMENT_ENABLED=true` to turn these two endpoints on; when they are off they answer `404`.
+Creating, changing and deleting users is off by default. Set `API_USER_MANAGEMENT_ENABLED=true` to turn these endpoints on; when they are off they answer `404`.
 
 * [Create User](v1/users/create.md) : `POST /api/v1/users/create`
+* [Update User](v1/users/update.md) : `PATCH /api/v1/users/:user_id`
 * [Delete User](v1/users/delete.md) : `DELETE /api/v1/users/:user_id`
 
 > [!WARNING]
