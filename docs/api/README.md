@@ -28,7 +28,16 @@ Creating and deleting users is off by default. Set `API_USER_MANAGEMENT_ENABLED=
 
 > [!WARNING]
 >
-> With these endpoints on, whoever holds the API key can delete any user that is not an administrator, with all of its calendars and address books. There is no way to undo it other than restoring a backup. Keep the key on the server side, and if you can, only let the service that needs it reach `/api`.
+> With these endpoints on, whoever holds the API key can delete any user that is not an administrator, with all of its calendars and address books. There is no way to undo it other than restoring a backup. With app keys turned on as well, the API key can also create an app key for any of those users, and so read and change everything they have. Keep the key on the server side, and if you can, only let the service that needs it reach `/api`.
+
+#### App keys related
+
+Endpoints for the [app keys](../../README.md) of a user: a key lets a client or a service log in over DAV as that user, without the user's password. They need both `API_USER_MANAGEMENT_ENABLED=true` and `APP_KEYS_ENABLED=true`, and answer `404` otherwise.
+
+A key made here is always for exactly one user who is not an administrator. Keys for all users (`*`), for several users or for an administrator can neither be created nor revoked over the API.
+
+* [Create User App Key](v1/app_keys/create.md) : `POST /api/v1/users/:user_id/app_keys/create`
+* [Revoke User App Key](v1/app_keys/revoke.md) : `POST /api/v1/users/:user_id/app_keys/:app_id/revoke`
 
 #### Calendars related
 

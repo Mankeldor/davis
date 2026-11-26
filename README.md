@@ -445,6 +445,8 @@ By default the API reads users and manages their calendars and shares. Set `API_
 
 A user created over the API has no usable password and is never an administrator, and an administrator cannot be deleted over the API. Each user created or deleted this way is written to the log file.
 
+With `APP_KEYS_ENABLED=true` as well, the API can also create and revoke app keys (see "App keys" above) for one user at a time, so that another system can hand a user the credentials for a device and take them back. The API key can then log in as any user who is not an administrator: treat it accordingly. Keys for all users (`*`), for several users or for an administrator stay with the dashboard and the console, and cannot be revoked over the API either.
+
 ## Webserver Configuration Examples
 
 ### Example Caddy 2 configuration

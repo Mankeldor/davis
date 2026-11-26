@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional;
 
+use App\Entity\AppKey;
 use App\Entity\User;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -46,6 +47,8 @@ class ApiUserManagementDisabledTest extends WebTestCase
         $requests = [
             ['POST', '/api/v1/users/create', '{"username":"jdoe","displayname":"John Doe","email":"jdoe@example.org"}'],
             ['DELETE', '/api/v1/users/'.$userId, null],
+            ['POST', '/api/v1/users/'.$userId.'/app_keys/create', '{"name":"Phone"}'],
+            ['POST', '/api/v1/users/'.$userId.'/app_keys/app_test/revoke', null],
         ];
 
         foreach ($requests as [$method, $url, $body]) {
@@ -62,6 +65,10 @@ class ApiUserManagementDisabledTest extends WebTestCase
         $users = static::getContainer()->get('doctrine.orm.entity_manager')->getRepository(User::class);
         $this->assertNull($users->findOneByUsername('jdoe'));
         $this->assertNotNull($users->findOneByUsername('test_user2'));
+
+        $keys = static::getContainer()->get('doctrine.orm.entity_manager')->getRepository(AppKey::class);
+        $this->assertCount(2, $keys->findAll(), 'No key was created');
+        $this->assertNull($keys->findOneByAppId('app_test')->getRevokedAt());
     }
 
     /**
@@ -76,6 +83,9 @@ class ApiUserManagementDisabledTest extends WebTestCase
         $this->assertResponseStatusCodeSame(401);
 
         $client->request('DELETE', '/api/v1/users/1', [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $this->assertResponseStatusCodeSame(401);
+
+        $client->request('POST', '/api/v1/users/1/app_keys/create', [], [], ['HTTP_ACCEPT' => 'application/json'], '{}');
         $this->assertResponseStatusCodeSame(401);
     }
 

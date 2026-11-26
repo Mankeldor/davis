@@ -2,11 +2,14 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\AppKey;
 use App\Entity\Principal;
 use App\Entity\User;
+use App\Repository\AppKeyRepository;
 use App\Repository\CalendarInstanceRepository;
 use App\Repository\PrincipalRepository;
 use App\Services\ApiUserManagementFeature;
+use App\Services\AppKeysFeature;
 use App\Services\UserRemover;
 use App\Services\Utils;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -21,7 +24,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
- * Creates and deletes users over the API.
+ * Creates and deletes users over the API, and creates and revokes their app keys.
  *
  * These endpoints are off unless API_USER_MANAGEMENT_ENABLED is true, so that an install which
  * only set API_KEY to manage calendars does not get a more powerful API with an update. When they
@@ -29,7 +32,9 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  * the firewall, and a caller without the API key must not be able to tell whether they are on.
  *
  * Nothing here can grant more than a regular account: no password, no admin flag, and an
- * administrator cannot be deleted. That stays with the dashboard.
+ * administrator cannot be deleted. An app key is always for exactly one user who is not an
+ * administrator; a key for all users can neither be created nor revoked. That stays with the
+ * dashboard and the console.
  */
 #[Route('/api/v1', name: 'api_v1_')]
 #[WithMonologChannel('api')]
@@ -51,6 +56,34 @@ class UserManagementController extends AbstractController
     private function disabled(): JsonResponse
     {
         return $this->error('User management over the API is disabled', 404);
+    }
+
+    private function appKeysDisabled(): JsonResponse
+    {
+        return $this->error('App keys are disabled', 404);
+    }
+
+    /**
+     * Reads an ISO 8601 date and time with its offset, e.g. `2027-01-23T00:00:00+01:00`.
+     * Returns null for anything else, including a date that does not exist.
+     */
+    private function parseDateTime(mixed $value): ?\DateTimeImmutable
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        foreach ([\DateTimeInterface::ATOM, 'Y-m-d\TH:i:s.uP'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat($format, $value);
+            $errors = \DateTimeImmutable::getLastErrors();
+
+            if ($date && (!$errors || 0 === $errors['warning_count'] + $errors['error_count'])) {
+                // The column has no timezone: it is read back in the server's, so it is stored in it
+                return $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -202,5 +235,149 @@ class UserManagementController extends AbstractController
         $this->logger->notice('API: user deleted', ['username' => $username, 'user_id' => $userId]);
 
         return $this->json(['status' => 'success', 'timestamp' => date('c')], 200);
+    }
+
+    /**
+     * Creates an app key that can log in over DAV as this user, and returns its secret once.
+     *
+     * @param Request $request The HTTP POST request
+     * @param int     $userId  The ID of the user the key is for
+     *
+     * @return JsonResponse A JSON response with the key and its secret, or the failure
+     */
+    #[Route('/users/{userId}/app_keys/create', name: 'user_app_key_create', methods: ['POST'], requirements: ['userId' => '\d+'])]
+    public function createUserAppKey(Request $request, int $userId, AppKeysFeature $appKeysFeature): JsonResponse
+    {
+        if (!$this->feature->isEnabled()) {
+            return $this->disabled();
+        }
+
+        if (!$appKeysFeature->isEnabled()) {
+            return $this->appKeysDisabled();
+        }
+
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+        if (!$user) {
+            return $this->error('User Not Found', 404);
+        }
+
+        // A key only logs in as an account that has both, see AbstractAuth
+        $principal = $this->principals->findOneByUri($user->getPrincipalUri());
+        if (!$principal) {
+            return $this->error('Principal Not Found', 404);
+        }
+
+        // An administrator can read every calendar and address book
+        if ($principal->getIsAdmin()) {
+            return $this->error('App Keys for Admin Users Cannot Be Created Over the API', 403);
+        }
+
+        // The scope is this user and nothing else. A username that the scope would read
+        // differently (`*` is "all users") cannot have a key from here.
+        $username = (string) $user->getUsername();
+        if (AppKey::ALL_USERS === $username || AppKey::normaliseScope([$username]) !== [$username]) {
+            return $this->error('App Keys for This Username Cannot Be Created Over the API', 403);
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (JSON_ERROR_NONE !== json_last_error() || !is_array($data)) {
+            return $this->error('Invalid JSON', 400);
+        }
+
+        $name = $data['name'] ?? null;
+        $name = is_string($name) ? trim($name) : '';
+        if ('' === $name || mb_strlen($name) > 255) {
+            return $this->error('Invalid Name', 400);
+        }
+
+        $expiresAt = null;
+        if (null !== ($data['expires_at'] ?? null)) {
+            $expiresAt = $this->parseDateTime($data['expires_at']);
+            if (!$expiresAt || $expiresAt <= new \DateTimeImmutable()) {
+                return $this->error('Invalid Expiry Date', 400);
+            }
+        }
+
+        try {
+            $key = AppKey::create($name, [$username], $expiresAt);
+            $secret = $key->issueSecret();
+
+            $this->entityManager->persist($key);
+            $this->entityManager->flush();
+        } catch (\Exception) {
+            return $this->error('Failed to Create App Key', 500);
+        }
+
+        // The secret is in the response and nowhere else: not in the log, not in the database
+        $this->logger->notice('API: app key created', ['username' => $username, 'user_id' => $userId, 'app_id' => $key->getAppId()]);
+
+        $response = $this->json([
+            'status' => 'success',
+            'data' => [
+                'app_id' => $key->getAppId(),
+                'secret' => $secret,
+                'name' => $key->getName(),
+                'username' => $username,
+                'basic_username' => $username.'*'.$key->getAppId(),
+                'expires_at' => $expiresAt?->format('c'),
+            ],
+            'timestamp' => date('c'),
+        ], 200);
+        $response->headers->set('Cache-Control', 'no-store');
+
+        return $response;
+    }
+
+    /**
+     * Revokes an app key whose scope is exactly this user.
+     *
+     * @param int    $userId The ID of the user the key is for
+     * @param string $appId  The app id of the key
+     *
+     * @return JsonResponse A JSON response with the revocation date, or the failure
+     */
+    #[Route('/users/{userId}/app_keys/{appId}/revoke', name: 'user_app_key_revoke', methods: ['POST'], requirements: ['userId' => '\d+', 'appId' => '[A-Za-z0-9_]+'])]
+    public function revokeUserAppKey(int $userId, string $appId, AppKeysFeature $appKeysFeature, AppKeyRepository $appKeys): JsonResponse
+    {
+        if (!$this->feature->isEnabled()) {
+            return $this->disabled();
+        }
+
+        if (!$appKeysFeature->isEnabled()) {
+            return $this->appKeysDisabled();
+        }
+
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+        if (!$user) {
+            return $this->error('User Not Found', 404);
+        }
+
+        // Only a key that is for this user and nobody else. A key for all users or for several
+        // users gets the same answer as a key that does not exist, so nothing is learnt about it.
+        // The app id is compared again here because MySQL ignores case when it looks it up.
+        $username = (string) $user->getUsername();
+        $key = $appKeys->findOneByAppId($appId);
+        if (!$key || $key->getAppId() !== $appId || $key->getScope() !== [$username]) {
+            return $this->error('App Key Not Found', 404);
+        }
+
+        try {
+            // A key that is already revoked keeps its date
+            $key->revoke(new \DateTimeImmutable());
+            $this->entityManager->flush();
+        } catch (\Exception) {
+            return $this->error('Failed to Revoke App Key', 500);
+        }
+
+        $this->logger->notice('API: app key revoked', ['username' => $username, 'user_id' => $userId, 'app_id' => $key->getAppId()]);
+
+        return $this->json([
+            'status' => 'success',
+            'data' => [
+                'app_id' => $key->getAppId(),
+                'revoked_at' => $key->getRevokedAt()?->format('c'),
+            ],
+            'timestamp' => date('c'),
+        ], 200);
     }
 }

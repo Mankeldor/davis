@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional;
 
+use App\Entity\AppKey;
+use App\Entity\User;
 use App\Security\AdminUser;
 use App\Services\BasicAuth;
 use Sabre\HTTP\Request;
@@ -65,6 +67,39 @@ class AppKeysDisabledTest extends WebTestCase
                 $this->addToAssertionCount(1);
             }
         }
+    }
+
+    /**
+     * The API endpoints for the app keys of a user need app keys to be on, even when user
+     * management over the API is (.env.test turns that on). The rest of it keeps working.
+     */
+    public function testTheApiEndpointsAreNotFound(): void
+    {
+        $client = static::createClient();
+        $headers = ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_DAVIS_API_TOKEN' => $_ENV['API_KEY']];
+
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $userId = $em->getRepository(User::class)->findOneByUsername('test_user2')->getId();
+
+        $requests = [
+            ['/api/v1/users/'.$userId.'/app_keys/create', '{"name":"Phone"}'],
+            ['/api/v1/users/'.$userId.'/app_keys/app_test/revoke', null],
+        ];
+        foreach ($requests as [$url, $body]) {
+            $client->request('POST', $url, [], [], $headers, $body);
+
+            $this->assertResponseStatusCodeSame(404, $url);
+            $data = json_decode((string) $client->getResponse()->getContent(), true);
+            $this->assertSame('App keys are disabled', $data['message']);
+        }
+
+        $this->assertCount(2, $em->getRepository(AppKey::class)->findAll(), 'No key was created');
+
+        $client->request('POST', '/api/v1/users/create', [], [], $headers, '{"username":"jdoe","displayname":"John Doe","email":"jdoe@example.org"}');
+        $this->assertResponseIsSuccessful();
+
+        $client->request('DELETE', '/api/v1/users/'.$userId, [], [], $headers);
+        $this->assertResponseIsSuccessful();
     }
 
     public function testAKeyDoesNotLogIn(): void
