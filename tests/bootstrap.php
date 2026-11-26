@@ -18,7 +18,7 @@ if (file_exists(dirname(__DIR__).'/config/bootstrap.php')) {
 // the environment, which the test processes inherit. They only load the fixtures again: that
 // is what gives every test the same data to start from. No test changes the schema, so there
 // is nothing for the migrations to do a second time, and starting the console twice more
-// before every test only to find that out took a third of the run time.
+// before every test only to find that out is time the suite does not need.
 //
 // Note: `--quiet` is needed here for each step so that PHPUnit doesn't fail.
 $schemaIsBuilt = '1' === getenv('DAVIS_TEST_SCHEMA_BUILT');
