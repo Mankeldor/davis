@@ -11,6 +11,14 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+### Added
+
+- **`INSTALL.md` explains `APP_TIMEZONE` and `BIRTHDAY_REMINDER_OFFSET`,** with examples:
+  the time zone is a name from PHP's list such as `Europe/Berlin`, not an abbreviation; the
+  reminder offset is a duration counted from 0:00 on the birthday (`PT9H`, `-PT15H`, `false`),
+  not a time zone. A wrong value in either stops nothing and is easy to miss. Birthday
+  events that exist keep their old reminder until `dav:sync-birthday-calendar` rebuilds them.
+
 ### Fixed
 
 - **`INSTALL.md` says how a database password with special characters goes into

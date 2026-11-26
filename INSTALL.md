@@ -110,6 +110,44 @@ APP_KEYS_ENABLED=false
 The file holds passwords: make it readable for the account the application runs under and
 for nobody else (`chmod 600 .env.local`).
 
+### Settings you will usually want
+
+These go into `.env.local` too, never into `.env`: an update replaces `.env`, and with it
+whatever you changed there.
+
+**`APP_TIMEZONE`**: the time zone Davis works in, as a name from
+[PHP's list of time zones](https://www.php.net/manual/en/timezones.php):
+
+```shell
+APP_TIMEZONE=Europe/Berlin
+```
+
+- Use the name, not an abbreviation. PHP accepts `CET`, but the diagnostics page marks it as
+  wrong; `MEZ` or `GMT+1` are not accepted at all, and Davis keeps the time zone of the
+  server.
+- Left empty, Davis uses the time zone PHP is set to (`date.timezone` in `php.ini`, UTC when
+  nothing is set there), and the diagnostics page warns about it.
+
+**`BIRTHDAY_REMINDER_OFFSET`**: when the birthday calendar reminds of a birthday. It is
+neither a time zone nor a time of day, but a duration in the format of iCalendar
+([RFC 5545, section 3.3.6](https://www.rfc-editor.org/rfc/rfc5545.html#section-3.3.6)),
+counted from the start of the birthday, 0:00 on the day:
+
+| Value | Reminder |
+| --- | --- |
+| `PT9H` (the default) | 9:00 on the day |
+| `PT8H` | 8:00 on the day |
+| `-PT15H` | 9:00 on the day before |
+| `-P1D` | 0:00 on the day before |
+| `false` | none |
+
+- Davis does not check the value. It goes into every birthday event as it is, and a value
+  in another format (`MEZ9H`, `9H`) gives events with a reminder that sabre/vobject, the
+  library Davis itself uses, cannot read. The diagnostics page does not show this.
+- A new value applies to birthday events written from then on. Davis rewrites an existing
+  one only when the date or the name in the contact changes;
+  `php bin/console dav:sync-birthday-calendar` rebuilds all of them with the new value.
+
 ## 3. Install the dependencies
 
 ```bash
