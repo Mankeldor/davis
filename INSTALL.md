@@ -138,7 +138,10 @@ What the script does, in this order:
    with git instead.
 2. It checks the PHP against what the new version needs.
 3. It backs up the program files with `.env.local`, and the database, to
-   `davis-backup-<time>` next to the installation. If that fails, it stops.
+   `davis-backup-<time>` next to the installation. If that fails, it stops and removes what
+   it had written. The dump of a MySQL or MariaDB database is made with the user and
+   password from `DATABASE_URL` and does not read a `~/.my.cnf` of the account that runs
+   the script. Whether the database can be read is checked first, in a dry run too.
 4. It replaces the program files and removes the ones the new version no longer has.
 5. It lets Composer install the dependencies, runs the migrations and clears the cache.
 

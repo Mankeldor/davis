@@ -219,7 +219,10 @@ read_database() {
         require "vendor/autoload.php";
         (new Symfony\Component\Dotenv\Dotenv())->bootEnv(".env");
         $url = (string) ($_SERVER["DATABASE_URL"] ?? $_ENV["DATABASE_URL"] ?? "");
-        $url = str_replace("%kernel.project_dir%", getcwd(), $url);
+        // What the "resolve:" in the configuration of Doctrine does to the value: a parameter
+        // is filled in, and a doubled percent sign (needed in .env for an encoded password)
+        // becomes a single one.
+        $url = str_replace("%%", "%", str_replace("%kernel.project_dir%", getcwd(), $url));
         if (0 === strpos($url, "sqlite:")) {
             $path = preg_replace("/\?.*$/", "", substr($url, strlen("sqlite:///")));
             if ("" !== $path && "/" !== $path[0]) { $path = getcwd()."/".$path; }
@@ -262,10 +265,98 @@ read_database() {
     return 0
 }
 
+# What this run keeps for itself, and removes again whichever way it ends.
+PRIVATE_DIR=""
+cleanup() {
+    if [ -n "$PRIVATE_DIR" ]; then rm -rf "$PRIVATE_DIR"; PRIVATE_DIR=""; fi
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# The account that runs this script may have a ~/.my.cnf of its own, with another user and
+# password in it. A password from an options file wins over one from the environment, so the
+# dump would log in with the user of the application and the password of somebody else, and
+# be refused. The password does not go on the command line either: arguments are in the
+# process list for everybody to read.
+#
+# So the dump is told which options file to read (--defaults-file, which has to be the first
+# option): one that takes in the files of the system, where the socket and TLS settings of
+# this machine are, and leaves out the one of the account. Nothing secret is in it.
+write_client_options() {
+    PRIVATE_DIR=$(mktemp -d) || return 1
+    {
+        for system_file in /etc/my.cnf /etc/mysql/my.cnf; do
+            if [ -r "$system_file" ]; then printf '!include %s\n' "$system_file"; fi
+        done
+        printf '[client]\n'
+    } > "$PRIVATE_DIR/client.cnf"
+}
+
+# Writes the dump to its standard output. $1: an option that limits it, or nothing.
+# DB_DEFAULTS: the --defaults-file option, or empty to read what the account has configured.
+DB_DEFAULTS=""
+db_dump() {
+    case "$DB_ENGINE" in
+        mysql)
+            if [ -n "$DB_DEFAULTS" ]; then
+                # MYSQL_TEST_LOGIN_FILE: the clients of MySQL read ~/.mylogin.cnf whatever
+                # options file they are given. Pointed at a file that is not there, they do not.
+                MYSQL_PWD="$DB_PASS" MYSQL_TEST_LOGIN_FILE="$PRIVATE_DIR/no-login-file" "$DB_DUMP" "$DB_DEFAULTS" \
+                    --host="${DB_HOST:-localhost}" --port="${DB_PORT:-3306}" --user="$DB_USER" \
+                    --single-transaction --no-tablespaces ${1:+"$1"} "$DB_NAME"
+            else
+                MYSQL_PWD="$DB_PASS" "$DB_DUMP" \
+                    --host="${DB_HOST:-localhost}" --port="${DB_PORT:-3306}" --user="$DB_USER" \
+                    --single-transaction --no-tablespaces ${1:+"$1"} "$DB_NAME"
+            fi
+            ;;
+        postgresql)
+            # PGPASSWORD wins over a ~/.pgpass, so there is nothing to shut out here.
+            PGPASSWORD="$DB_PASS" pg_dump --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
+                --username="$DB_USER" --no-password --no-owner ${1:+"$1"} "$DB_NAME"
+            ;;
+    esac
+}
+
 DB_PROBLEM="DATABASE_URL could not be read from the configuration of the installation"
+DB_NOTE=""
 if [ "$SKIP_BACKUP" -eq 0 ]; then
     read_database || fail "The database cannot be backed up: $DB_PROBLEM.
        Nothing was changed. Back it up yourself and run again with --skip-backup."
+
+    # Can the database be read at all? Asked here and not only when the backup is made, so
+    # that a dry run finds out too.
+    DB_ERROR=""
+    DB_READ_FAILED=0
+    case "$DB_ENGINE" in
+        mysql)
+            write_client_options || fail "Could not create a temporary directory. Nothing was changed."
+            DB_DEFAULTS="--defaults-file=$PRIVATE_DIR/client.cnf"
+            if ! DB_ERROR=$(db_dump --no-data 2>&1 > /dev/null); then
+                # Without the options of the account there is no connection. Then they may
+                # be what this machine needs to connect, and the dump reads them after all.
+                DB_FIRST_ERROR=$DB_ERROR
+                DB_DEFAULTS=""
+                if DB_ERROR=$(db_dump --no-data 2>&1 > /dev/null); then
+                    DB_NOTE="$DB_DUMP only connects with the options of this account (~/.my.cnf) and reads them."
+                else
+                    DB_ERROR="$DB_FIRST_ERROR
+and, reading the options of this account (~/.my.cnf) too:
+$DB_ERROR"
+                    DB_READ_FAILED=1
+                fi
+            fi
+            ;;
+        postgresql) DB_ERROR=$(db_dump --schema-only 2>&1 > /dev/null) || DB_READ_FAILED=1 ;;
+        sqlite)     [ -r "$DB_NAME" ] || { DB_ERROR="the file is not readable"; DB_READ_FAILED=1; } ;;
+    esac
+    if [ "$DB_READ_FAILED" -eq 1 ]; then
+        fail "The database cannot be read for the backup:
+$(printf '%s\n' "$DB_ERROR" | sed 's/^ */         /')
+       Nothing was changed. If you have a backup of your own, run again with --skip-backup."
+    fi
 fi
 
 # ------------------------------------------------------------- what would change
@@ -313,6 +404,7 @@ else
     else
         say "    database:     $DB_ENGINE, '$DB_NAME' on ${DB_HOST:-localhost}"
     fi
+    [ -z "$DB_NOTE" ] || say "    NOTE: $DB_NOTE"
 fi
 [ "$FROM" != "$TO" ] || say "    NOTE: the installation already says $TO. Its files are replaced all the same."
 
@@ -364,36 +456,38 @@ else
     ( umask 077 && mkdir -p "$BACKUP_DIR" ) \
         || fail "Could not create $BACKUP_DIR. Nothing was changed. Choose another place with --backup-dir DIR."
 
+    # A backup that is not complete is not kept. It is of no use, because nothing was changed
+    # that it could put back, and half of it is a copy of .env.local lying around.
+    backup_failed() {
+        if rm -rf "$BACKUP_DIR" 2> /dev/null && [ ! -e "$BACKUP_DIR" ]; then
+            left="The incomplete backup was removed again."
+        else
+            left="An incomplete backup is left in $BACKUP_DIR. It holds a copy of .env.local: delete it."
+        fi
+        fail "$1 Nothing was changed.
+       $left
+       If you have a backup of your own, run again with --skip-backup."
+    }
+
     # The code with .env.local, without var/ (data and cache) and vendor/ (Composer brings it back).
     ( umask 077 && cd "$TARGET" && tar -czf "$BACKUP_DIR/files.tar.gz" --exclude=./var --exclude=./vendor . ) \
-        || fail "Could not back up the files. Nothing was changed."
+        || backup_failed "Could not back up the files."
     say "    files.tar.gz     the program files and .env.local of $FROM"
 
-    # The password goes through the environment, not as an argument: arguments are in the
-    # process list for everybody on the machine to read.
     case "$DB_ENGINE" in
-        mysql)
-            ( umask 077 && MYSQL_PWD="$DB_PASS" "$DB_DUMP" --host="${DB_HOST:-localhost}" --port="${DB_PORT:-3306}" \
-                --user="$DB_USER" --single-transaction --no-tablespaces "$DB_NAME" > "$BACKUP_DIR/database.sql" ) \
-                || fail "Could not back up the database with $DB_DUMP. Nothing was changed.
-       Back it up yourself and run again with --skip-backup."
-            ;;
-        postgresql)
-            ( umask 077 && PGPASSWORD="$DB_PASS" pg_dump --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" \
-                --username="$DB_USER" --no-owner --file="$BACKUP_DIR/database.sql" "$DB_NAME" ) \
-                || fail "Could not back up the database with pg_dump. Nothing was changed.
-       Back it up yourself and run again with --skip-backup."
+        mysql|postgresql)
+            ( umask 077 && db_dump > "$BACKUP_DIR/database.sql" ) \
+                || backup_failed "Could not back up the database with $DB_DUMP."
+            [ -s "$BACKUP_DIR/database.sql" ] || backup_failed "The database backup is empty."
             ;;
         sqlite)
             ( umask 077 && cp "$DB_NAME" "$BACKUP_DIR/database.sqlite" ) \
-                || fail "Could not copy the SQLite file. Nothing was changed."
+                || backup_failed "Could not copy the SQLite file."
             ;;
     esac
-    if [ "$DB_ENGINE" != "sqlite" ] && [ ! -s "$BACKUP_DIR/database.sql" ]; then
-        fail "The database backup is empty. Nothing was changed. Back it up yourself and run again with --skip-backup."
-    fi
     say "    database.*       the database before the migrations"
 fi
+cleanup
 
 # ------------------------------------------------------------- when it goes wrong
 #
@@ -404,6 +498,7 @@ MIGRATIONS_STARTED=0
 
 on_exit() {
     code=$?
+    cleanup
     if [ "$code" -ne 0 ] && [ "$FILES_TOUCHED" -eq 1 ]; then
         say
         say "The update stopped after the files were replaced. The installation is in between"
@@ -424,8 +519,14 @@ on_exit() {
                 say
                 say "The migrations had started, so the database goes back too:"
                 case "$DB_ENGINE" in
-                    mysql)      say "    mysql --host=${DB_HOST:-localhost} --user=$DB_USER -p $DB_NAME < $(quoted "$BACKUP_DIR/database.sql")" ;;
-                    postgresql) say "    psql --host=${DB_HOST:-localhost} --username=$DB_USER $DB_NAME < $(quoted "$BACKUP_DIR/database.sql")   # into an emptied database" ;;
+                    mysql)
+                        client=mysql
+                        if command -v mariadb > /dev/null 2>&1; then client=mariadb; fi
+                        # User and -p on the command line: they win over a ~/.my.cnf, and the
+                        # password is asked for.
+                        say "    $client --host=${DB_HOST:-localhost} --port=${DB_PORT:-3306} --user=$DB_USER -p $DB_NAME < $(quoted "$BACKUP_DIR/database.sql")"
+                        ;;
+                    postgresql) say "    psql --host=${DB_HOST:-localhost} --port=${DB_PORT:-5432} --username=$DB_USER $DB_NAME < $(quoted "$BACKUP_DIR/database.sql")   # into an emptied database" ;;
                     sqlite)     say "    cp $(quoted "$BACKUP_DIR/database.sqlite") $(quoted "$DB_NAME")" ;;
                 esac
             fi

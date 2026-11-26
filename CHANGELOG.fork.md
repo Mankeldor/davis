@@ -11,6 +11,32 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+## [5.6.3-st2.4] - 2026-11-26
+
+> **Updating changes nothing in the application.** No migration, no new setting. This
+> release corrects `update.sh`. An update always runs the `update.sh` of the archive it
+> updates *to*, so updating to this release already uses the corrected script.
+
+### Fixed
+
+- **`update.sh` could not back up the database when the account that runs it has a
+  `~/.my.cnf`.** With another user and password in that file, the dump logged in with the
+  user of Davis and the password from the file and was refused
+  (`mariadb-dump: Got error: 1045: "Access denied …"`), and the update stopped before it
+  had changed anything. The dump now reads the options files of the system, where the socket
+  and TLS settings of the machine are, and not the one of the account. That also keeps
+  options for the dump in such a file (`[mysqldump]`) from quietly thinning out the backup.
+  If the client only connects with the options of the account, the script uses them after
+  all and says so.
+- **A backup that fails is removed again.** Before, it left a `davis-backup-<time>`
+  directory behind with a copy of `.env.local` and an empty dump in it. If a run of the
+  earlier script failed for you, look for such a directory next to the installation and
+  delete it.
+- **`update.sh` finds out whether the database can be read before it starts,** and
+  `--dry-run` does too. Before, a dry run could pass and the update then stop at the backup.
+- **A password in `DATABASE_URL` with doubled percent signs** (`%%`, which `.env` files
+  need for a URL-encoded password) is read the way the application reads it.
+
 ## [5.6.3-st2.3] - 2026-11-26
 
 > **Updating changes nothing in how the application behaves.** No migration, no new
