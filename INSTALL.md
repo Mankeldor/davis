@@ -1,0 +1,182 @@
+# Installing Davis from a release archive
+
+This file covers the way from a release archive to a running installation, and how to update
+one later. `README.md` stays the reference for every setting and for the web server
+configuration; this file only says what to do in which order.
+
+## Requirements
+
+- **PHP 8.2 or newer** on the command line *and* in the web server, with the extensions
+  `ctype`, `gd`, `iconv`, `intl`, `zip` and the PDO driver of your database (`pdo_mysql`,
+  `pdo_pgsql` or `pdo_sqlite`). `ldap` is only needed for LDAP authentication.
+- **Composer 2.**
+- **A database and a database user that already exist.** MySQL or MariaDB is the usual
+  choice. The installation creates the tables, not the database.
+- **A web server whose document root can be set** to the `public/` directory of the
+  installation.
+
+On a host with several PHP versions, find out what the right one is called on the command
+line (`php84`, `php8.4`, …) and use that name in every command below instead of `php`. The
+version the web server uses is a separate setting, usually in the control panel of the host.
+
+Once the archive is unpacked, this tells you whether a PHP has what is needed:
+
+```bash
+php /path/to/composer.phar check-platform-reqs --lock --no-dev
+```
+
+## 1. Get the archive
+
+Every release page has the archive `davis-v<version>.tar.gz` and its checksum
+`davis-v<version>.tar.gz.sha256`, and its notes start with the exact commands to fetch both.
+Check the checksum before unpacking:
+
+```bash
+sha256sum -c davis-vX.Y.Z-st2.N.tar.gz.sha256   # has to say OK
+tar -xzf davis-vX.Y.Z-st2.N.tar.gz
+```
+
+A download that broke off unpacks fine and is missing files; that shows later, somewhere
+that looks unrelated.
+
+Move the unpacked directory to where the installation is to live. The examples below call
+that place `/path/to/davis`.
+
+## 2. Configure
+
+Create `/path/to/davis/.env.local`. It is the only file you write: `.env` holds the defaults
+and is replaced by every update, and what you set in `.env.local` wins over it.
+
+```shell
+APP_ENV=prod
+APP_SECRET=<32 random characters>
+
+DATABASE_DRIVER=mysql
+DATABASE_URL="mysql://davis:<password>@127.0.0.1:3306/davis?serverVersion=10.11.0-MariaDB&charset=utf8mb4"
+
+ADMIN_LOGIN=admin
+ADMIN_PASSWORD=<a password of your own>
+
+INVITE_FROM_ADDRESS=calendar@example.org
+MAILER_DSN=smtp://user:<password>@smtp.example.org:587
+```
+
+- `APP_ENV=prod` has to be there **before** the next step. Without it Composer starts the
+  development environment, which the archive does not have the packages for.
+- `APP_SECRET`: `php -r 'echo bin2hex(random_bytes(16)), PHP_EOL;'` prints one.
+- `DATABASE_URL`: put the version of your own database server after `serverVersion=`. A
+  password with special characters has to be URL-encoded.
+- `ADMIN_LOGIN` and `ADMIN_PASSWORD` are the login of the dashboard.
+- `example.org` in the lines above is a placeholder. Replace it with addresses of your own.
+
+Everything else has a default in `.env`, explained there and in `README.md`. The settings
+this fork adds are all off by default:
+
+```shell
+API_KEY=
+API_USER_MANAGEMENT_ENABLED=false
+APP_KEYS_ENABLED=false
+```
+
+The file holds passwords: make it readable for the account the application runs under and
+for nobody else (`chmod 600 .env.local`).
+
+## 3. Install the dependencies
+
+```bash
+cd /path/to/davis
+composer install --no-dev --optimize-autoloader
+```
+
+With another PHP: `php84 /path/to/composer.phar install --no-dev --optimize-autoloader`.
+Started as `composer …`, Composer runs under the PHP named in its own first line, which is
+not necessarily the one you chose.
+
+## 4. Create the tables
+
+```bash
+php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+## 5. Point the web server at `public/`
+
+The document root is `/path/to/davis/public`, **not** `/path/to/davis`. Nothing above
+`public/` may be reachable from the web: `.env.local` is there, and so are the logs.
+
+For Apache, `public/.htaccess` already does the rewriting. Examples for Apache, Nginx and
+Caddy, and the redirections for `/.well-known/caldav` and `/.well-known/carddav`, are in
+`README.md`.
+
+`var/` has to be writable for the account the web server runs PHP under.
+
+## 6. Check
+
+- Open the address of the installation: the home page shows the version.
+- Log in at `/dashboard` with `ADMIN_LOGIN` and `ADMIN_PASSWORD`.
+- Open the diagnostics page in the dashboard. It names what is not right yet (the database,
+  pending migrations, the log file, the sender address for invitations).
+
+## Updating
+
+Fetch and unpack the new archive **next to** the installation, never over it. Unpacking adds
+and overwrites, it never removes, so files that the new version no longer has would keep
+being loaded. Then run the script that is in the archive:
+
+```bash
+cd davis-vX.Y.Z-st2.N
+sh update.sh /path/to/davis --dry-run   # shows what would change
+sh update.sh /path/to/davis
+```
+
+Read the changes on the release page first. A release can need a manual step that is due
+before the update; it is named there.
+
+What the script does, in this order:
+
+1. It makes sure `/path/to/davis` is a Davis installation that was configured, and stops
+   without changing anything if it is not. An installation that is a git checkout is updated
+   with git instead.
+2. It checks the PHP against what the new version needs.
+3. It backs up the program files with `.env.local`, and the database, to
+   `davis-backup-<time>` next to the installation. If that fails, it stops.
+4. It replaces the program files and removes the ones the new version no longer has.
+5. It lets Composer install the dependencies, runs the migrations and clears the cache.
+
+It does not touch `.env.local`, `var/`, `config/secrets/` or anything of your own at the top
+level of the installation. `public/.htaccess` is a program file and is replaced; lines of
+your own in it are gone afterwards.
+
+Options:
+
+| Option | |
+| --- | --- |
+| `--dry-run` | show what would happen, change nothing |
+| `--yes` | do not ask before starting |
+| `--php NAME` | the PHP to use, for example `php84`. Composer is started with it too |
+| `--composer PATH` | where Composer is, for example `/path/to/composer.phar` |
+| `--backup-dir DIR` | where to put the backup, if the place next to the installation is not writable |
+| `--skip-backup` | do not back up. Only if you have a backup of your own |
+
+Davis has no maintenance mode. A request that arrives during the few seconds in which the
+files are replaced can fail; DAV clients try again.
+
+The backup holds `.env.local` and the whole database. Keep it out of reach of the web
+server and delete it once the new version has proven itself.
+
+## If an update fails
+
+Before the files are replaced, the script stops with "Nothing was changed" and the reason.
+
+After that point it prints the commands that put the backup back: the program files, the
+dependencies, and the database if the migrations had already started. Nothing is rolled back
+by itself.
+
+## If the installation does not answer
+
+- **A blank page or a 500 right after installing:** look at `var/log/prod.log`, and check
+  that `var/` is writable for the web server.
+- **`Class "Symfony\Bundle\WebProfilerBundle\WebProfilerBundle" not found`:** `APP_ENV=prod`
+  is missing from `.env.local`.
+- **The page lists the files of the installation, or shows `.env`:** the document root is
+  the installation and not its `public/` directory. Fix that first.
+- More in the troubleshooting section of `README.md`.
