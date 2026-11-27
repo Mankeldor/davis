@@ -22,6 +22,17 @@ parameters:
     default_app_keys_enabled: "false"
     api_user_management_enabled: "%env(bool:default:default_api_user_management_enabled:API_USER_MANAGEMENT_ENABLED)%"
     default_api_user_management_enabled: "false"
+    # Scheduling emails: language and look. Empty means "as it has always been".
+    invite_locale: "%env(default:default_invite_locale:INVITE_LOCALE)%"
+    default_invite_locale: "en"
+    invite_brand_name: "%env(default:default_invite_empty:INVITE_BRAND_NAME)%"
+    invite_logo_url: "%env(default:default_invite_empty:INVITE_LOGO_URL)%"
+    invite_accent_color: "%env(default:default_invite_empty:INVITE_ACCENT_COLOR)%"
+    invite_footer: "%env(default:default_invite_empty:INVITE_FOOTER)%"
+    invite_templates_dir: "%env(default:default_invite_empty:INVITE_TEMPLATES_DIR)%"
+    default_invite_empty: ""
+    invite_email_local_users: "%env(bool:default:default_invite_email_local_users:INVITE_EMAIL_LOCAL_USERS)%"
+    default_invite_email_local_users: "true"
 
 services:
     # default configuration for services in *this* file
@@ -62,6 +73,18 @@ services:
             $appKeysEnabled: "%app_keys_enabled%"
             $apiUserManagementEnabled: "%api_user_management_enabled%"
             $adminAuthBypass: "%admin_auth_bypass%"
+            $inviteEmailLocalUsers: "%invite_email_local_users%"
+
+    App\Services\SchedulingMail:
+        arguments:
+            $builtInTemplatesDir: "%kernel.project_dir%/templates/mails"
+            $translationsDir: "%kernel.project_dir%/translations"
+            $locale: "%invite_locale%"
+            $brandName: "%invite_brand_name%"
+            $logoUrl: "%invite_logo_url%"
+            $accentColor: "%invite_accent_color%"
+            $footer: "%invite_footer%"
+            $templatesDir: "%invite_templates_dir%"
 
     App\Command\MailTestCommand:
         arguments:
@@ -96,6 +119,7 @@ services:
             $webDAVEnabled: "%env(bool:WEBDAV_ENABLED)%"
             $publicCalendarsEnabled: "%public_calendars_enabled%"
             $inviteAddress: "%env(INVITE_FROM_ADDRESS)%"
+            $inviteEmailLocalUsers: "%invite_email_local_users%"
             $authMethod: "%env(AUTH_METHOD)%"
             $authRealm: "%env(AUTH_REALM)%"
             $webdavPublicDir: "%env(resolve:WEBDAV_PUBLIC_DIR)%"

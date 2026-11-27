@@ -1,57 +1,47 @@
-Calendar notification from {{ senderName }}.
+{#- What a scheduling email says, as text. See scheduling.html.twig. -#}
+{% extends 'layout.txt.twig' %}
+
+{% block content %}
+
+{{ t('heading.' ~ action|lower, {name: senderName}) }}
+{{ summary }}
 
 -----------------------------------------------------------
 
-{% if action == 'REQUEST' %}
-
-**{{ senderName }}** invited you to “{{ summary }}”.
-
-{% elseif action == 'CANCEL' %}
-
-“{{ summary }}” has been canceled.
-
-{% elseif action == 'ACCEPTED' %}
-
-**{{ senderName }}** accepted your invitation to “{{ summary }}”.
-
-{% elseif action == 'TENTATIVE' %}
-
-**{{ senderName }}** tentatively accepted your invitation to “{{ summary }}”.
-
-{% elseif action == 'DECLINED' %}
-
-**{{ senderName }}** declined your invitation to “{{ summary }}”.
-
+{{ t('label.when') }}
+              {{ when.date }}
+{% if when.time %}
+              {{ when.time }}
+{% endif %}
+{% if recurring %}
+              {{ t('when.recurring') }}
 {% endif %}
 
------------------------------------------------------------
-
-When?         {{ dateTime|date('l, F jS Y') }}
-{% if not allDay %}
-              {{ dateTime|date('g:ia T') }}
-{% endif %}
-
-{% if action != 'CANCEL' %}
-Attendees:
+{% if action not in ['CANCEL', 'UNINVITED'] %}
+{{ t('label.attendees') }}
 {% for attendee in attendees %}
-              {{ attendee.cn }} <{{ attendee.email }}> {% if attendee.role == 'CHAIR' %}(organizer){% endif %}
+              {{ attendee.cn }}{% if attendee.email and attendee.email != attendee.cn %} <{{ attendee.email }}>{% endif %}{% if attendee.role == 'CHAIR' %} {{ t('label.organizer') }}{% endif %}
+
 {% endfor %}
 {% endif %}
 
-
 {% if location %}
-Where?        {{ location|replace({"\n": "\n" ~ '              '}) }}
+{{ t('label.where') }}
+              {{ location|replace({"\n": "\n" ~ '              '}) }}
 {% endif %}
 
 {% if url %}
-URL:          {{ url }}
+{{ t('label.url') }}
+              {{ url }}
 {% endif %}
-
 
 {% if description %}
-Notes:        {{ description|replace({"\n": "\n" ~ '              '}) }}
+{{ t('label.notes') }}
+              {{ description|replace({"\n": "\n" ~ '              '}) }}
 {% endif %}
 
------------------------------------------------------------
+{% if attached and action in ['REQUEST', 'UPDATE'] %}
+{{ t('hint.reply') }}
 
-Mail sent by {{ app.request.getSchemeAndHttpHost() }}
+{% endif %}
+{% endblock %}

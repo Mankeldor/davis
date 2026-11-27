@@ -1,0 +1,56 @@
+{#
+  Frame of every scheduling email: logo, header, footer. To change the look, put a file with this
+  name into INVITE_TEMPLATES_DIR; to change only a part of it, start that file with
+  {% extends '@davis/layout.html.twig' %} and replace the block in question.
+#}
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <title>{% block title %}{{ t('title', {name: senderName}) }}{% endblock %}</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+</head>
+<body leftmargin="0" marginwidth="0" topmargin="0" marginheight="0" offset="0" style="margin: 0; padding: 0; background: #fff; color: #111111; font-family: Arial, sans-serif; font-size: 14px; line-height: 20px;">
+<table cellspacing="0" cellpadding="0" width="100%">
+  <thead>
+    <tr>
+      <td colspan="3"> </td>
+    </tr>
+    {% if brand.logoUrl %}
+    <tr>
+      <td width="*"> </td>
+      <td width="500" style="padding: 0 0 10px 0;">
+        <img src="{{ brand.logoUrl }}" alt="{{ brand.name ?: siteUrl }}" style="display: block; max-width: 200px; max-height: 48px; border: 0;" />
+      </td>
+      <td width="*"> </td>
+    </tr>
+    {% endif %}
+    {% block header %}{% endblock %}
+  </thead>
+  <tbody>
+    {% block content %}{% endblock %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="3" height="5px"></td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td style="font-size: 11px; line-height: 16px; text-align: center; color: #999999;">
+        {% block footer %}
+          {%- if brand.footer -%}
+            {{ brand.footer }}
+          {%- elseif brand.name -%}
+            {{ t('footer.branded', {brand: brand.name, name: senderName}) }}
+          {%- elseif siteUrl -%}
+            {{ t('footer.unbranded', {site: siteUrl, name: senderName}) }}
+          {%- else -%}
+            {{ t('footer.reply', {name: senderName}) }}
+          {%- endif -%}
+        {% endblock %}
+      </td>
+      <td> </td>
+    </tr>
+  </tfoot>
+</table>
+</body>
+</html>

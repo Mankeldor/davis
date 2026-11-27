@@ -148,6 +148,25 @@ counted from the start of the birthday, 0:00 on the day:
   one only when the date or the name in the contact changes;
   `php bin/console dav:sync-birthday-calendar` rebuilds all of them with the new value.
 
+**Invitation emails**: language, look, and whether users of this server get one. Without
+these, Davis writes in English and emails every attendee:
+
+```shell
+INVITE_LOCALE=de
+INVITE_BRAND_NAME="Example Calendar"
+INVITE_ACCENT_COLOR="#000000"
+INVITE_EMAIL_LOCAL_USERS=false
+```
+
+- Put a color in quotes. Unquoted, a value starting with `#` counts as a comment and arrives
+  empty.
+- With `INVITE_EMAIL_LOCAL_USERS=false`, users of this server find invitations and replies
+  only in their calendar; people elsewhere still get an email.
+- German dates need the PHP extension `intl` with German ICU data. The diagnostics page
+  says when they are missing; the texts are German either way.
+- Logo, footer and templates of your own are described in the README, under the mailer
+  configuration.
+
 ## 3. Install the dependencies
 
 ```bash

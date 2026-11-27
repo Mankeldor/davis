@@ -11,6 +11,34 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+> **Updating needs no manual step.** No migration. Without the new settings, invitation emails
+> read as before, with two differences: an update and a removal now have emails of their own
+> (see below), and the time shows when the event ends.
+
+### Added
+
+- **Invitation emails in German, and in a look of your own.** All settings go into
+  `.env.local`, none is needed:
+  - `INVITE_LOCALE=de` writes subject, text, dates and times in German (`en` and `de` so far).
+    German dates need the PHP extension `intl` with German ICU data; the diagnostics page
+    says when that is missing.
+  - `INVITE_BRAND_NAME`, `INVITE_LOGO_URL`, `INVITE_ACCENT_COLOR` and `INVITE_FOOTER` set the
+    sender name ("Jane Doe über Example"), a logo, the color and the footer line.
+  - `INVITE_TEMPLATES_DIR` points to templates of your own outside the installation, which an
+    update leaves alone. Davis falls back to its own template when one of yours fails, and
+    the diagnostics page shows which one and why. The README lists the files and variables.
+- **`INVITE_EMAIL_LOCAL_USERS=false`**: users of this server get invitations and replies only
+  in their calendar, without an email. Default `true`, as before.
+
+### Changed
+
+- **An update of an event and the removal of an attendee have emails of their own.** Until
+  now an update read like a new invitation, and an attendee who was taken off the list read
+  that the event had been canceled. Davis tells them apart by the version of the event stored
+  before the change.
+- Invitation emails show when the event ends, whether it repeats, and the address of
+  attendees that have no name.
+
 ## [5.6.3-st2.6] - 2026-11-26
 
 > **Documentation only. Davis behaves exactly as in 5.6.3-st2.5.** No code, no migration and

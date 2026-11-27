@@ -1,24 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Calendar notification from {{ senderName }}</title>
-  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-</head>
-<body leftmargin="0" marginwidth="0" topmargin="0" marginheight="0" offset="0" style="margin: 0; padding: 0; background: #fff; color: #111111; font-family: Arial, sans-serif; font-size: 14px; line-height: 20px;">
-<table cellspacing="0" cellpadding="0" width="100%">
-  <thead>
-    <tr>
-      <td colspan="3"> </td>
-    </tr>
+{#
+  What a scheduling email says. `action` is one of REQUEST (invitation), UPDATE (changed
+  invitation), CANCEL (event canceled), UNINVITED (the recipient was removed from it), ACCEPTED,
+  TENTATIVE, DECLINED (replies). The variables are listed in the README.
+#}
+{% extends 'layout.html.twig' %}
+
+{% block header %}
     <tr>
       <td width="*"> </td>
       <td width="500">
         <table width="100%">
           <tr>
-            <td width="1" style="font-size: 64px; font-weight:bold;">{{ dateTime|date('j') }}</td>
+            <td width="1" style="font-size: 64px; font-weight:bold;">{{ when.day }}</td>
             <td width="*" style="padding: 10px 0;">
-              <span style=" font-size: 12px; color: #555555">{{ dateTime|date('l') }}</span><br />
-              {{ dateTime|date('F') }}
+              <span style=" font-size: 12px; color: #555555">{{ when.weekday }}</span><br />
+              {{ when.month }}
             </td>
             <td width="58" style="text-align: right;">
             </td>
@@ -32,27 +28,14 @@
       <td style="border-top: 1px solid #cccccc"> </td>
       <td> </td>
     </tr>
-  </thead>
+{% endblock %}
 
-  <tbody>
+{% block content %}
     <tr>
       <td> </td>
       <td style="text-align: center; padding: 10px 0;">
-        {% if action == 'REQUEST' %}
-          <strong>{{ senderName }}</strong> invited you to
-          <h1 style="margin: 0; color: #2c7ea9; font-weight: 300; line-height: 36px;">{{ summary }}</h1>
-        {% elseif action == 'CANCEL' %}
-          <h1 style="margin: 0; color: #2c7ea9; font-weight: 300; line-height: 36px;">{{ summary }}</h1> has been canceled.
-        {% elseif action == 'ACCEPTED' %}
-          <strong>{{ senderName }}</strong> accepted your invitation to
-          <h1 style="margin: 0; color: #2c7ea9; font-weight: 300; line-height: 36px;">{{ summary }}</h1>
-        {% elseif action == 'TENTATIVE' %}
-          <strong>{{ senderName }}</strong> tentatively accepted your invitation to
-          <h1 style="margin: 0; color: #2c7ea9; font-weight: 300; line-height: 36px;">{{ summary }}</h1>
-        {% elseif action == 'DECLINED' %}
-          <strong>{{ senderName }}</strong> declined your invitation to
-          <h1 style="margin: 0; color: #2c7ea9; font-weight: 300; line-height: 36px;">{{ summary }}</h1>
-        {% endif %}
+        {{ t('heading.' ~ action|lower, {name: senderName}) }}
+        <h1 style="margin: 0; color: {{ brand.accentColor }}; font-weight: 300; line-height: 36px;">{{ summary }}</h1>
       </td>
       <td> </td>
     </tr>
@@ -69,38 +52,35 @@
       <td>
         <table border="0" cellpadding="0" cellspacing="10" width="100%">
           <tr>
-            <td style="vertical-align: bottom; color: #777777;" width="100px">When?</td>
+            <td style="vertical-align: top; color: #777777;" width="100px">{{ t('label.when') }}</td>
             <td>
-              <strong>{{ dateTime|date("l, F j\\<\\s\\u\\p\\>S\\<\\/\\s\\u\\p\\> Y")|raw }}</strong>
+              <strong>{{ when.date }}</strong>
+              {% if when.time %}<br /><strong>{{ when.time }}</strong>{% endif %}
+              {% if recurring %}<br />{{ t('when.recurring') }}{% endif %}
             </td>
           </tr>
-          {% if not allDay %}
+          {% if action not in ['CANCEL', 'UNINVITED'] %}
             <tr>
-              <td> </td>
-              <td><strong>{{ dateTime|date('g:ia T') }}</strong></td>
-            </tr>
-          {% endif %}
-          {% if action != 'CANCEL' %}
-            <tr>
-              <td style="vertical-align: top; color: #777777;" width="100px">Attendees:</td>
+              <td style="vertical-align: top; color: #777777;" width="100px">{{ t('label.attendees') }}</td>
               <td>
               {% for attendee in attendees %}
-                <a href="mailto:{{ attendee.email }}" style="color: #2c7ea9">{{ attendee.cn }}</a>
-                {% if attendee.role == 'CHAIR' %}(organizer){% endif %}
+                {% if attendee.email %}<a href="mailto:{{ attendee.email }}" style="color: {{ brand.accentColor }}">{{ attendee.cn }}</a>{% else %}{{ attendee.cn }}{% endif %}
+                {% if attendee.role == 'CHAIR' %}{{ t('label.organizer') }}{% endif %}
                 <br />
               {% endfor %}
+              </td>
             </tr>
           {% endif %}
           {% if location %}
           <tr>
-            <td style="vertical-align: top; color: #777777;" width="100px">Where?</td>
-            <td>{{ location }}</td>
+            <td style="vertical-align: top; color: #777777;" width="100px">{{ t('label.where') }}</td>
+            <td>{{ location|nl2br }}</td>
           </tr>
           {% endif %}
           {% if locationImageDataAsBase64 %}
           <tr>
             <td colspan="2">
-                <a href="{{ locationLink }}" title="Navigate on this map">
+                <a href="{{ locationLink }}" title="{{ t('label.map') }}">
                   <img src="data:image/png;base64,{{ locationImageDataAsBase64 }}" width="100%"/>
                 </a>
             </td>
@@ -108,7 +88,7 @@
           {% endif %}
           {% if url %}
           <tr>
-            <td style="vertical-align: top; color: #777777;" width="100px">URL:</td>
+            <td style="vertical-align: top; color: #777777;" width="100px">{{ t('label.url') }}</td>
             <td>
               <a href="{{ url }}" style="color: #aaaaaa">{{ url }}</a>
             </td>
@@ -116,34 +96,24 @@
           {% endif %}
           {% if description %}
           <tr>
-            <td style="vertical-align: top; color: #777777;" width="100px">Notes:</td>
-            <td>{{ description }}</td>
+            <td style="vertical-align: top; color: #777777;" width="100px">{{ t('label.notes') }}</td>
+            <td>{{ description|nl2br }}</td>
           </tr>
           {% endif %}
         </table>
       </td>
       <td> </td>
     </tr>
-
+    {% if attached and action in ['REQUEST', 'UPDATE'] %}
+    <tr>
+      <td> </td>
+      <td style="padding: 0 10px 10px 10px; color: #555555;">{{ t('hint.reply') }}</td>
+      <td> </td>
+    </tr>
+    {% endif %}
     <tr>
       <td> </td>
       <td style="border-bottom: 1px solid #cccccc"> </td>
       <td> </td>
     </tr>
-  </tbody>
-
-  <tfoot>
-    <tr>
-      <td colspan="3" height="5px"></td>
-    </tr>
-    <tr>
-      <td> </td>
-      <td style="font-size: 11px; line-height: 16px; text-align: center; color: #dddddd;">
-        Mail sent by {{ app.request.getSchemeAndHttpHost() }}
-      </td>
-      <td> </td>
-    </tr>
-  </tfoot>
-</table>
-</body>
-</html>
+{% endblock %}

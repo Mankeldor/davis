@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Plugins;
 
 use App\Plugins\DavisIMipPlugin;
+use App\Tests\Functional\Double\RecordingLogger;
+use App\Tests\Functional\Double\SchedulingMailFactory;
 use Doctrine\ORM\EntityManagerInterface;
-use Psr\Log\AbstractLogger;
 use Sabre\CalDAV;
 use Sabre\CalDAV\Backend\PDO as CalendarBackend;
 use Sabre\DAV;
@@ -30,8 +31,7 @@ class ImipSchedulingDiagnosticsTest extends KernelTestCase
     private DAV\Server $server;
     private CalendarBackend $calendarBackend;
 
-    /** @var object{records: array<int, array{level: string, message: string, context: array}>} */
-    private $logger;
+    private RecordingLogger $logger;
 
     protected function setUp(): void
     {
@@ -39,19 +39,13 @@ class ImipSchedulingDiagnosticsTest extends KernelTestCase
         $container = static::getContainer();
 
         $this->em = $container->get(EntityManagerInterface::class);
+        /** @var \PDO $pdo */
         $pdo = $this->em->getConnection()->getNativeConnection();
 
         $principalBackend = new PrincipalBackend($pdo);
         $this->calendarBackend = new CalendarBackend($pdo);
 
-        $this->logger = new class extends AbstractLogger {
-            public array $records = [];
-
-            public function log($level, $message, array $context = []): void
-            {
-                $this->records[] = ['level' => (string) $level, 'message' => (string) $message, 'context' => $context];
-            }
-        };
+        $this->logger = new RecordingLogger();
 
         $mailer = new class implements MailerInterface {
             public function send(RawMessage $message, ?\Symfony\Component\Mailer\Envelope $envelope = null): void
@@ -68,7 +62,7 @@ class ImipSchedulingDiagnosticsTest extends KernelTestCase
 
         // The CalDAV plugin is what answers `calendar-user-address-set` on a principal
         $this->server->addPlugin(new CalDAV\Plugin());
-        $this->server->addPlugin(new DavisIMipPlugin($mailer, 'davis@test.com', '', $this->logger));
+        $this->server->addPlugin(new DavisIMipPlugin($mailer, 'davis@test.com', '', $this->logger, SchedulingMailFactory::create($container)));
     }
 
     /**

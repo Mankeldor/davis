@@ -1001,6 +1001,58 @@
         <source>diagnostics.api_user_management.disabled</source>
         <target>The API cannot create or delete users. To allow it, set API_USER_MANAGEMENT_ENABLED=true.</target>
       </trans-unit>
+      <trans-unit id="dbginv01" resname="diagnostics.invite_language">
+        <source>diagnostics.invite_language</source>
+        <target>Language of scheduling emails</target>
+      </trans-unit>
+      <trans-unit id="dbginv02" resname="diagnostics.invite_language.fix.missing">
+        <source>diagnostics.invite_language.fix.missing</source>
+        <target>There are no texts in this language, so the emails are sent in English. Set INVITE_LOCALE to a language that has a translations/mails+intl-icu.&lt;language&gt;.xlf file.</target>
+      </trans-unit>
+      <trans-unit id="dbginv03" resname="diagnostics.invite_language.fix.intl">
+        <source>diagnostics.invite_language.fix.intl</source>
+        <target>The texts are translated, but dates and times stay in English: formatting them in this language needs the PHP extension intl with the ICU data for it (on Alpine Linux, the package icu-data-full).</target>
+      </trans-unit>
+      <trans-unit id="dbginv04" resname="diagnostics.invite_look">
+        <source>diagnostics.invite_look</source>
+        <target>Look of scheduling emails (brand name)</target>
+      </trans-unit>
+      <trans-unit id="dbginv05" resname="diagnostics.invite_look.fix.logo">
+        <source>diagnostics.invite_look.fix.logo</source>
+        <target>INVITE_LOGO_URL is not an absolute http or https address, so the emails are sent without a logo.</target>
+      </trans-unit>
+      <trans-unit id="dbginv06" resname="diagnostics.invite_look.fix.color">
+        <source>diagnostics.invite_look.fix.color</source>
+        <target>INVITE_ACCENT_COLOR is not a color like #2c7ea9, so the emails use the default color.</target>
+      </trans-unit>
+      <trans-unit id="dbginv07" resname="diagnostics.invite_templates">
+        <source>diagnostics.invite_templates</source>
+        <target>Templates of scheduling emails</target>
+      </trans-unit>
+      <trans-unit id="dbginv08" resname="diagnostics.invite_templates.built_in">
+        <source>diagnostics.invite_templates.built_in</source>
+        <target>Built-in</target>
+      </trans-unit>
+      <trans-unit id="dbginv09" resname="diagnostics.invite_templates.fix.missing">
+        <source>diagnostics.invite_templates.fix.missing</source>
+        <target>INVITE_TEMPLATES_DIR is not a directory Davis can read, so the built-in templates are used.</target>
+      </trans-unit>
+      <trans-unit id="dbginv10" resname="diagnostics.invite_templates.fix.broken">
+        <source>diagnostics.invite_templates.fix.broken</source>
+        <target>A template in this directory has an error. Emails that need it are sent with the built-in template instead.</target>
+      </trans-unit>
+      <trans-unit id="dbginv11" resname="diagnostics.invite_local_users">
+        <source>diagnostics.invite_local_users</source>
+        <target>Scheduling emails to users of this server</target>
+      </trans-unit>
+      <trans-unit id="dbginv12" resname="diagnostics.invite_local_users.enabled">
+        <source>diagnostics.invite_local_users.enabled</source>
+        <target>Users of this server get an email as well as the invitation in their calendar. INVITE_EMAIL_LOCAL_USERS=false leaves it at the calendar.</target>
+      </trans-unit>
+      <trans-unit id="dbginv13" resname="diagnostics.invite_local_users.disabled">
+        <source>diagnostics.invite_local_users.disabled</source>
+        <target>Users of this server get invitations and replies in their calendar only, without an email.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

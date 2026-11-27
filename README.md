@@ -235,6 +235,49 @@ To check the mailer itself without creating an event:
 php bin/console davis:mail:test you@example.org
 ```
 
+**Language and look of the invitation emails**
+
+All of these are optional; with none of them set, the emails are in English and look as they always did.
+
+```shell
+INVITE_LOCALE=de                         # language of the texts and dates (en, de)
+INVITE_BRAND_NAME="Example Calendar"     # sender shown as "Jane Doe via Example Calendar", and in the footer
+INVITE_LOGO_URL=https://example.org/logo.png
+INVITE_ACCENT_COLOR="#000000"            # in quotes: an unquoted value starting with # is a comment
+INVITE_FOOTER="Example Ltd · 1 Example Street"
+INVITE_EMAIL_LOCAL_USERS=true            # false: users of this server get invitations and replies in their calendar only
+```
+
+Davis sends seven kinds of email: an invitation, an update of it, a cancellation, a notice that the recipient was removed from the event, and the three replies (accepted, tentatively accepted, declined). An update is told apart from an invitation, and a removal from a cancellation, by comparing with the version of the event stored before the change.
+
+Dates in another language than English need the PHP extension `intl` with the ICU data for that language. Some systems ship English only: on Alpine Linux, which the Docker images are built on, that takes the package `icu-data-full`. Without it, the texts are translated and the dates stay in English; the diagnostics page says so.
+
+For more than that, put templates of your own into a directory outside the installation, so that an update does not replace them, and point `INVITE_TEMPLATES_DIR` to it. Davis looks there first and takes what is missing from `templates/mails/`:
+
+| File | What it is |
+|---|---|
+| `layout.html.twig`, `layout.txt.twig` | The frame: logo, header and footer, in the HTML and the text part |
+| `scheduling.html.twig`, `scheduling.txt.twig` | What the email says, for all seven kinds |
+
+A template of your own can extend the built-in one and replace a single block, for example `{% extends '@davis/layout.html.twig' %}` and then `{% block footer %}…{% endblock %}`. The text of the emails is in `translations/mails+intl-icu.<language>.xlf`, and the templates get it with `t('key', {name: …})`.
+
+If a template of your own fails, the email is sent with the built-in one and the error is logged; the diagnostics page shows templates that do not compile. Templates are Twig and can do anything Twig can, so the directory must only be writable by whoever administers the server.
+
+The templates get these variables. They will only be added to, not renamed or removed:
+
+| Variable | Content |
+|---|---|
+| `action` | `REQUEST`, `UPDATE`, `CANCEL`, `UNINVITED`, `ACCEPTED`, `TENTATIVE` or `DECLINED` |
+| `senderName`, `recipientName` | Who the email is from (the organizer, or the attendee for a reply) and to; `recipientName` can be empty |
+| `summary`, `location`, `description`, `url` | From the event; `location`, `description` and `url` are `false` when empty. `url` is only set for http, https and mailto addresses |
+| `start`, `end`, `allDay`, `recurring` | The event's dates as `DateTime` (`end` can be `null`), whether it is all-day, and whether it repeats |
+| `when` | The dates formatted in the email's language: `date`, `time` (`null` for all-day events), `day`, `weekday`, `month`, `subject` |
+| `attendees` | A list of `{cn, email, role}`; `email` can be `null` |
+| `locationImageDataAsBase64`, `locationLink` | A map of the location and a link to it, or `false` |
+| `attached` | Whether the event is attached as `invite.ics` (it is not for users of this server) |
+| `brand` | `name`, `logoUrl` (`null` when not set or not usable), `accentColor` (always set), `footer` |
+| `locale`, `siteUrl` | The language of the email and the address of this server |
+
 
 **f. The reminder offset for all birthdays**
 

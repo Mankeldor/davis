@@ -14,6 +14,7 @@ use App\Services\BirthdayService;
 use App\Services\CapturingSapi;
 use App\Services\IMAPAuth;
 use App\Services\LDAPAuth;
+use App\Services\SchedulingMail;
 use Doctrine\ORM\EntityManagerInterface;
 use PDO;
 use Psr\Log\LoggerInterface;
@@ -116,6 +117,18 @@ class DAVController extends AbstractController
     protected $mailer;
 
     /**
+     * @var SchedulingMail
+     */
+    protected $schedulingMail;
+
+    /**
+     * Whether users of this server get scheduling emails too.
+     *
+     * @var bool
+     */
+    protected $inviteEmailLocalUsers;
+
+    /**
      * @var BirthdayService
      */
     protected $birthdayService;
@@ -162,7 +175,7 @@ class DAVController extends AbstractController
      */
     protected $server;
 
-    public function __construct(MailerInterface $mailer, BasicAuth $basicAuthBackend, IMAPAuth $IMAPAuthBackend, LDAPAuth $LDAPAuthBackend, UrlGeneratorInterface $router, EntityManagerInterface $entityManager, LoggerInterface $logger, BirthdayService $birthdayService, string $publicDir, bool $calDAVEnabled = true, bool $cardDAVEnabled = true, bool $webDAVEnabled = false, bool $publicCalendarsEnabled = true, ?string $inviteAddress = null, ?string $authMethod = null, ?string $authRealm = null, ?string $webdavPublicDir = null, ?string $webdavHomesDir = null, ?string $webdavTmpDir = null, bool $webdavPublicDirWritable = false)
+    public function __construct(MailerInterface $mailer, BasicAuth $basicAuthBackend, IMAPAuth $IMAPAuthBackend, LDAPAuth $LDAPAuthBackend, UrlGeneratorInterface $router, EntityManagerInterface $entityManager, LoggerInterface $logger, BirthdayService $birthdayService, SchedulingMail $schedulingMail, string $publicDir, bool $calDAVEnabled = true, bool $cardDAVEnabled = true, bool $webDAVEnabled = false, bool $publicCalendarsEnabled = true, ?string $inviteAddress = null, ?string $authMethod = null, ?string $authRealm = null, ?string $webdavPublicDir = null, ?string $webdavHomesDir = null, ?string $webdavTmpDir = null, bool $webdavPublicDirWritable = false, bool $inviteEmailLocalUsers = true)
     {
         $this->publicDir = $publicDir;
 
@@ -180,6 +193,8 @@ class DAVController extends AbstractController
         $this->em = $entityManager;
         $this->logger = $logger;
         $this->mailer = $mailer;
+        $this->schedulingMail = $schedulingMail;
+        $this->inviteEmailLocalUsers = $inviteEmailLocalUsers;
         $this->birthdayService = $birthdayService;
         $this->baseUri = $router->generate('dav', ['path' => '']);
 
@@ -313,7 +328,7 @@ class DAVController extends AbstractController
             $this->server->addPlugin(new \Sabre\CalDAV\ICSExportPlugin());
             $this->server->addPlugin(new \Sabre\CalDAV\Subscriptions\Plugin());
             if ($this->inviteAddress) {
-                $this->server->addPlugin(new DavisIMipPlugin($this->mailer, $this->inviteAddress, $this->publicDir, $this->logger));
+                $this->server->addPlugin(new DavisIMipPlugin($this->mailer, $this->inviteAddress, $this->publicDir, $this->logger, $this->schedulingMail, $this->inviteEmailLocalUsers));
             } else {
                 // Without it the scheduling plugin above still answers, but no invitation ever
                 // leaves the server and nothing says so.

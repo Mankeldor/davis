@@ -41,6 +41,8 @@ final class Diagnostics
         private bool $appKeysEnabled = false,
         private string $adminAuthBypass = 'false',
         private bool $apiUserManagementEnabled = false,
+        private ?SchedulingMail $schedulingMail = null,
+        private bool $inviteEmailLocalUsers = true,
     ) {
     }
 
@@ -72,6 +74,7 @@ final class Diagnostics
                 $this->inviteAddress(),
                 $this->mailer(),
                 $this->accountsWithoutEmail(),
+                ...$this->schedulingMails(),
             ],
             'diagnostics.bucket.endpoints' => array_values(array_filter([
                 $this->davEndpoint(),
@@ -364,6 +367,58 @@ final class Diagnostics
         }
 
         return $this->check(self::OK, 'diagnostics.accounts_without_email', '0', 'diagnostics.accounts_without_email.help');
+    }
+
+    /**
+     * The language and look of the scheduling emails. Nothing here stops an invitation: a
+     * setting that cannot be used falls back to the default, and that is easy to miss.
+     */
+    private function schedulingMails(): array
+    {
+        if (!$this->calDAVEnabled || !$this->inviteAddress || !$this->schedulingMail) {
+            return [];
+        }
+
+        $mail = $this->schedulingMail;
+        $checks = [];
+
+        if (!$mail->hasTranslation()) {
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_language', $mail->locale(), 'diagnostics.invite_language.fix.missing', 'INVITE_LOCALE=en');
+        } elseif (!$mail->canFormatDates()) {
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_language', $mail->locale(), 'diagnostics.invite_language.fix.intl');
+        } else {
+            $checks[] = $this->check(self::OK, 'diagnostics.invite_language', $mail->locale());
+        }
+
+        $brand = '' !== $mail->brandName() ? $mail->brandName() : 'diagnostics.value.not_set';
+        if ($mail->logoIsInvalid()) {
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_look', $brand, 'diagnostics.invite_look.fix.logo', 'INVITE_LOGO_URL=https://example.org/logo.png');
+        } elseif ($mail->accentColorIsInvalid()) {
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_look', $brand, 'diagnostics.invite_look.fix.color', 'INVITE_ACCENT_COLOR='.SchedulingMail::DEFAULT_ACCENT_COLOR);
+        } else {
+            $checks[] = $this->check(self::OK, 'diagnostics.invite_look', $brand);
+        }
+
+        $directory = $mail->templatesDir();
+        if (null === $directory) {
+            $checks[] = $this->check(self::OK, 'diagnostics.invite_templates', 'diagnostics.invite_templates.built_in');
+        } elseif (!is_dir($directory) || !is_readable($directory)) {
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_templates', $directory, 'diagnostics.invite_templates.fix.missing');
+        } elseif ($broken = $mail->brokenCustomTemplates()) {
+            $first = array_key_first($broken);
+            $checks[] = $this->check(self::WARNING, 'diagnostics.invite_templates', $directory, 'diagnostics.invite_templates.fix.broken', $first.': '.$broken[$first]);
+        } else {
+            $checks[] = $this->check(self::OK, 'diagnostics.invite_templates', $directory);
+        }
+
+        $checks[] = $this->check(
+            self::INFO,
+            'diagnostics.invite_local_users',
+            $this->inviteEmailLocalUsers ? 'diagnostics.value.enabled' : 'diagnostics.value.disabled',
+            $this->inviteEmailLocalUsers ? 'diagnostics.invite_local_users.enabled' : 'diagnostics.invite_local_users.disabled'
+        );
+
+        return $checks;
     }
 
     private function davEndpoint(): array

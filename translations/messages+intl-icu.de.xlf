@@ -1001,6 +1001,58 @@
         <source>diagnostics.api_user_management.disabled</source>
         <target>Die API kann keine Benutzer anlegen oder löschen. Um das zu erlauben, setzen Sie API_USER_MANAGEMENT_ENABLED=true.</target>
       </trans-unit>
+      <trans-unit id="dbginv01" resname="diagnostics.invite_language">
+        <source>diagnostics.invite_language</source>
+        <target>Sprache der Einladungs-Mails</target>
+      </trans-unit>
+      <trans-unit id="dbginv02" resname="diagnostics.invite_language.fix.missing">
+        <source>diagnostics.invite_language.fix.missing</source>
+        <target>Für diese Sprache gibt es keine Texte, deshalb gehen die Mails englisch hinaus. INVITE_LOCALE muss eine Sprache nennen, zu der es eine Datei translations/mails+intl-icu.&lt;Sprache&gt;.xlf gibt.</target>
+      </trans-unit>
+      <trans-unit id="dbginv03" resname="diagnostics.invite_language.fix.intl">
+        <source>diagnostics.invite_language.fix.intl</source>
+        <target>Die Texte sind übersetzt, Datum und Uhrzeit bleiben aber englisch: Für diese Sprache braucht PHP die Erweiterung intl samt den ICU-Daten dafür (unter Alpine Linux das Paket icu-data-full).</target>
+      </trans-unit>
+      <trans-unit id="dbginv04" resname="diagnostics.invite_look">
+        <source>diagnostics.invite_look</source>
+        <target>Aussehen der Einladungs-Mails (Name)</target>
+      </trans-unit>
+      <trans-unit id="dbginv05" resname="diagnostics.invite_look.fix.logo">
+        <source>diagnostics.invite_look.fix.logo</source>
+        <target>INVITE_LOGO_URL ist keine absolute http- oder https-Adresse, deshalb gehen die Mails ohne Logo hinaus.</target>
+      </trans-unit>
+      <trans-unit id="dbginv06" resname="diagnostics.invite_look.fix.color">
+        <source>diagnostics.invite_look.fix.color</source>
+        <target>INVITE_ACCENT_COLOR ist keine Farbe wie #2c7ea9, deshalb nutzen die Mails die Standardfarbe.</target>
+      </trans-unit>
+      <trans-unit id="dbginv07" resname="diagnostics.invite_templates">
+        <source>diagnostics.invite_templates</source>
+        <target>Vorlagen der Einladungs-Mails</target>
+      </trans-unit>
+      <trans-unit id="dbginv08" resname="diagnostics.invite_templates.built_in">
+        <source>diagnostics.invite_templates.built_in</source>
+        <target>Mitgeliefert</target>
+      </trans-unit>
+      <trans-unit id="dbginv09" resname="diagnostics.invite_templates.fix.missing">
+        <source>diagnostics.invite_templates.fix.missing</source>
+        <target>INVITE_TEMPLATES_DIR ist kein Verzeichnis, das Davis lesen kann, deshalb gelten die mitgelieferten Vorlagen.</target>
+      </trans-unit>
+      <trans-unit id="dbginv10" resname="diagnostics.invite_templates.fix.broken">
+        <source>diagnostics.invite_templates.fix.broken</source>
+        <target>Eine Vorlage in diesem Verzeichnis hat einen Fehler. Mails, die sie brauchen, gehen mit der mitgelieferten Vorlage hinaus.</target>
+      </trans-unit>
+      <trans-unit id="dbginv11" resname="diagnostics.invite_local_users">
+        <source>diagnostics.invite_local_users</source>
+        <target>Einladungs-Mails an Benutzer dieses Servers</target>
+      </trans-unit>
+      <trans-unit id="dbginv12" resname="diagnostics.invite_local_users.enabled">
+        <source>diagnostics.invite_local_users.enabled</source>
+        <target>Benutzer dieses Servers bekommen zusätzlich zur Einladung im Kalender eine Mail. Mit INVITE_EMAIL_LOCAL_USERS=false bleibt es beim Kalender.</target>
+      </trans-unit>
+      <trans-unit id="dbginv13" resname="diagnostics.invite_local_users.disabled">
+        <source>diagnostics.invite_local_users.disabled</source>
+        <target>Benutzer dieses Servers bekommen Einladungen und Antworten nur in ihrem Kalender, ohne Mail.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

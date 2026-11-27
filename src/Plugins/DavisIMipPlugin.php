@@ -2,6 +2,7 @@
 
 namespace App\Plugins;
 
+use App\Services\SchedulingMail;
 use DantSu\OpenStreetMapStaticAPI\LatLng;
 use DantSu\OpenStreetMapStaticAPI\Markers;
 use DantSu\OpenStreetMapStaticAPI\OpenStreetMap;
@@ -10,10 +11,10 @@ use Sabre\CalDAV\Schedule\IMipPlugin as SabreBaseIMipPlugin;
 use Sabre\DAV;
 use Sabre\VObject;
 use Sabre\VObject\ITip;
-use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Exception\RfcComplianceException;
 
 /**
@@ -49,14 +50,41 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
     private $server;
 
     /**
-     * Creates the email handler.
+     * @var SchedulingMail
      */
-    public function __construct(MailerInterface $mailer, string $senderEmail, string $publicDir, LoggerInterface $logger)
+    private $mail;
+
+    /**
+     * @var bool
+     */
+    private $emailLocalUsers;
+
+    /**
+     * What the event looked like before the change that is being scheduled, by UID.
+     *
+     * sabre's broker knows whether an attendee was already invited and whether an event was
+     * deleted, but the iTIP message it hands over says neither: an update is a REQUEST like the
+     * first invitation, and an attendee who was removed gets the same CANCEL as everybody when
+     * the event is called off. This is recorded just before sabre compares the two versions.
+     *
+     * @var array<string, array{attendees: string[], deleted: bool, cancelled: bool}>
+     */
+    private $changes = [];
+
+    /**
+     * Creates the email handler.
+     *
+     * @param bool $emailLocalUsers whether users of this server get an email too, on top of the
+     *                              invitation that sabre puts into their calendar
+     */
+    public function __construct(MailerInterface $mailer, string $senderEmail, string $publicDir, LoggerInterface $logger, SchedulingMail $mail, bool $emailLocalUsers = true)
     {
         $this->mailer = $mailer;
         $this->senderEmail = $senderEmail;
         $this->publicDir = $publicDir;
         $this->logger = $logger;
+        $this->mail = $mail;
+        $this->emailLocalUsers = $emailLocalUsers;
     }
 
     public function initialize(DAV\Server $server)
@@ -64,6 +92,19 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
         parent::initialize($server);
 
         $this->server = $server;
+
+        // sabre's scheduling plugin compares the old and the new version on these two events, at
+        // the default priority (100). Running just before it is the last moment the old version
+        // can still be read.
+        $server->on('calendarObjectChange', function ($request, $response, VObject\Component\VCalendar $vCal, $calendarPath, $modified, $isNew) {
+            $this->rememberChange($request->getPath(), $vCal, (bool) $isNew);
+        }, 90);
+        $server->on('beforeUnbind', function (string $path) {
+            // sabre does not schedule a MOVE either
+            if ('MOVE' !== $this->server->httpRequest->getMethod()) {
+                $this->rememberChange($path, null, false);
+            }
+        }, 90);
 
         // sabre only emits `schedule` when it has decided to send an iTIP message. These two
         // events fire on every calendar object that gets written, sent or not.
@@ -128,7 +169,11 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
             }
 
             foreach ($vevent->ATTENDEE as $attendee) {
-                if (isset($attendee['SCHEDULE-AGENT']) && 'CLIENT' === strtoupper((string) $attendee['SCHEDULE-AGENT'])) {
+                if (!$attendee instanceof VObject\Property) {
+                    continue;
+                }
+                $scheduleAgent = $attendee['SCHEDULE-AGENT'];
+                if ($scheduleAgent instanceof VObject\Parameter && 'CLIENT' === strtoupper((string) $scheduleAgent->getValue())) {
                     $this->logger->warning('Scheduling: an attendee is marked SCHEDULE-AGENT=CLIENT, so the client sends that invitation itself and Davis does not.', [
                         'attendee' => (string) $attendee,
                         'path' => $path,
@@ -166,139 +211,227 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
     }
 
     /**
+     * Records who was invited before this change, and whether the event is going away.
+     *
+     * @param VObject\Component\VCalendar|null $new null when the object is deleted
+     */
+    public function rememberChange(string $path, ?VObject\Component\VCalendar $new, bool $isNew): void
+    {
+        try {
+            $old = null;
+            if (!$isNew) {
+                $node = $this->server->tree->getNodeForPath($path);
+                if (!$node instanceof \Sabre\CalDAV\ICalendarObject) {
+                    return;
+                }
+                $old = VObject\Reader::read($node->get());
+            }
+
+            $uid = $this->uidOf($new) ?? ($old instanceof VObject\Component\VCalendar ? $this->uidOf($old) : null);
+            if (null === $uid) {
+                return;
+            }
+
+            $attendees = [];
+            foreach ($old ? $old->select('VEVENT') : [] as $vevent) {
+                foreach ($vevent->select('ATTENDEE') as $attendee) {
+                    if ($attendee instanceof VObject\Property\ICalendar\CalAddress) {
+                        $attendees[] = strtolower($attendee->getNormalizedValue());
+                    }
+                }
+            }
+
+            $master = $new ? $this->primaryEvent($new) : null;
+            $status = $master ? $this->property($master, 'STATUS') : null;
+
+            $this->changes[$uid] = [
+                'attendees' => array_values(array_unique($attendees)),
+                'deleted' => null === $new,
+                'cancelled' => $status && 'CANCELLED' === strtoupper((string) $status->getValue()),
+            ];
+        } catch (\Exception $e) {
+            // Without it the email says "invited" instead of "updated"; not worth failing a write for
+            $this->logger->debug('iMIP: could not read the previous version of the event', ['path' => $path, 'exception' => $e->getMessage()]);
+        }
+    }
+
+    private function uidOf(?VObject\Component\VCalendar $calendar): ?string
+    {
+        $event = $calendar ? $this->primaryEvent($calendar) : null;
+        $uid = $event ? $this->property($event, 'UID') : null;
+
+        return $uid ? (string) $uid->getValue() : null;
+    }
+
+    /**
+     * The event itself rather than one of its exceptions, when there is one.
+     */
+    private function primaryEvent(VObject\Component\VCalendar $calendar): ?VObject\Component\VEvent
+    {
+        $first = null;
+        foreach ($calendar->select('VEVENT') as $vevent) {
+            if (!$vevent instanceof VObject\Component\VEvent) {
+                continue;
+            }
+            if (null === $this->property($vevent, 'RECURRENCE-ID')) {
+                return $vevent;
+            }
+            $first ??= $vevent;
+        }
+
+        return $first;
+    }
+
+    private function property(VObject\Component $component, string $name): ?VObject\Property
+    {
+        $found = $component->select($name);
+        $first = reset($found);
+
+        return $first instanceof VObject\Property ? $first : null;
+    }
+
+    private function parameter(VObject\Property $property, string $name): ?string
+    {
+        $parameter = $property->parameters()[$name] ?? null;
+
+        return $parameter instanceof VObject\Parameter ? (string) $parameter->getValue() : null;
+    }
+
+    /**
+     * Which of the emails this message is.
+     */
+    private function actionFor(ITip\Message $iTipMessage): ?string
+    {
+        $change = null !== $iTipMessage->uid ? ($this->changes[$iTipMessage->uid] ?? null) : null;
+
+        switch (strtoupper($iTipMessage->method)) {
+            case 'REQUEST':
+                return $change && \in_array(strtolower($iTipMessage->recipient), $change['attendees'], true) ? 'UPDATE' : 'REQUEST';
+            case 'CANCEL':
+                // The event still exists and is not called off: only this attendee was removed
+                return $change && !$change['deleted'] && !$change['cancelled'] ? 'UNINVITED' : 'CANCEL';
+            case 'REPLY':
+                $partstat = strtoupper((string) $iTipMessage->message->VEVENT->ATTENDEE['PARTSTAT']);
+
+                return \in_array($partstat, ['ACCEPTED', 'TENTATIVE', 'DECLINED'], true) ? $partstat : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Event handler for the 'schedule' event.
      */
-    public function schedule(ITip\Message $itip)
+    public function schedule(ITip\Message $iTipMessage)
     {
         // Not sending any emails if the system considers the update
         // insignificant.
-        if (!$itip->significantChange) {
-            $this->logger->debug('iMIP: no email for an insignificant change', ['method' => $itip->method, 'recipient' => $itip->recipient]);
+        if (!$iTipMessage->significantChange) {
+            $this->logger->debug('iMIP: no email for an insignificant change', ['method' => $iTipMessage->method, 'recipient' => $iTipMessage->recipient]);
 
-            if (empty($itip->scheduleStatus)) {
-                $itip->scheduleStatus = '1.0;We got the message, but it\'s not significant enough to warrant an email';
+            if (empty($iTipMessage->scheduleStatus)) {
+                $iTipMessage->scheduleStatus = '1.0;We got the message, but it\'s not significant enough to warrant an email';
             }
 
             return;
         }
 
-        $summary = $itip->message->VEVENT->SUMMARY;
-
-        if ('mailto' !== parse_url($itip->sender, PHP_URL_SCHEME)
-            || 'mailto' !== parse_url($itip->recipient, PHP_URL_SCHEME)) {
+        if ('mailto' !== parse_url($iTipMessage->sender, PHP_URL_SCHEME)
+            || 'mailto' !== parse_url($iTipMessage->recipient, PHP_URL_SCHEME)) {
             // iTIP allows other schemes; this plugin only knows how to send email.
-            $this->logger->warning('iMIP: not an email exchange, no invitation sent', ['sender' => $itip->sender, 'recipient' => $itip->recipient]);
+            $this->logger->warning('iMIP: not an email exchange, no invitation sent', ['sender' => $iTipMessage->sender, 'recipient' => $iTipMessage->recipient]);
 
             return;
         }
 
-        $deliveredLocally = '1.2' === $itip->getScheduleStatus();
+        $deliveredLocally = '1.2' === $iTipMessage->getScheduleStatus();
+
+        if ($deliveredLocally && !$this->emailLocalUsers) {
+            // sabre has already put the message into the recipient's calendar, where they answer it
+            $this->logger->debug('iMIP: the recipient is a user of this server, no email (INVITE_EMAIL_LOCAL_USERS=false)', ['recipient' => $iTipMessage->recipient, 'method' => $iTipMessage->method]);
+
+            return;
+        }
 
         // 7 is the length of `mailto:`.
-        $senderEmail = substr($itip->sender, 7);
-        $recipientEmail = substr($itip->recipient, 7);
+        $senderEmail = substr($iTipMessage->sender, 7);
+        $recipientEmail = substr($iTipMessage->recipient, 7);
 
         // We fallback the senderName to the email if the iTIP originator does not send a name along.
-        $senderName = $itip->senderName ?? $senderEmail;
-        $recipientName = $itip->recipientName;
+        $senderName = $iTipMessage->senderName ?? $senderEmail;
+        $recipientName = $iTipMessage->recipientName;
 
         // For a REPLY, the attendee is the sender. If the stored event had no CN for
         // them, the Broker leaves it out of the iTIP payload and some mail clients
         // (Apple Mail for instance) render the attendee name as "(null)".
         // We put the fallback name in the payload too. A REPLY can carry one VEVENT
         // per recurrence instance, so we go through all of them.
-        if ('REPLY' === strtoupper($itip->method)) {
-            foreach ($itip->message->VEVENT as $vevent) {
+        if ('REPLY' === strtoupper($iTipMessage->method)) {
+            foreach ($iTipMessage->message->VEVENT as $vevent) {
                 if (isset($vevent->ATTENDEE) && !isset($vevent->ATTENDEE['CN'])) {
                     $vevent->ATTENDEE['CN'] = $senderName;
                 }
             }
         }
 
-        $subject = 'CalDAV message';
-        // Anything other than the three methods below leaves the template without an action to
-        // render, so the message is not one this plugin knows how to word.
-        $action = null;
-        switch (strtoupper($itip->method)) {
-            case 'REPLY':
-                // In the case of a reply, we need to find the `PARTSTAT` from
-                // the user.
-                $partstat = (string) $itip->message->VEVENT->ATTENDEE['PARTSTAT'];
-                switch (strtoupper($partstat)) {
-                    case 'DECLINED':
-                        $subject = $senderName.' declined your invitation to "'.$summary.'"';
-                        $action = 'DECLINED';
-                        break;
-                    case 'ACCEPTED':
-                        $subject = $senderName.' accepted your invitation to "'.$summary.'"';
-                        $action = 'ACCEPTED';
-                        break;
-                    case 'TENTATIVE':
-                        $subject = $senderName.' tentatively accepted your invitation to "'.$summary.'"';
-                        $action = 'TENTATIVE';
-                        break;
-                    default:
-                        $this->logger->warning('iMIP: unsupported PARTSTAT in a REPLY, no email sent', ['partstat' => $partstat, 'recipient' => $itip->recipient]);
-                        $itip->scheduleStatus = '5.0;Email not delivered. We didn\'t understand this PARTSTAT.';
+        // Anything other than these leaves the template without an action to render, so the
+        // message is not one this plugin knows how to word.
+        $action = $this->actionFor($iTipMessage);
+        if (null === $action) {
+            if ('REPLY' === strtoupper($iTipMessage->method)) {
+                $this->logger->warning('iMIP: unsupported PARTSTAT in a REPLY, no email sent', ['partstat' => (string) $iTipMessage->message->VEVENT->ATTENDEE['PARTSTAT'], 'recipient' => $iTipMessage->recipient]);
+                $iTipMessage->scheduleStatus = '5.0;Email not delivered. We didn\'t understand this PARTSTAT.';
+            } else {
+                $this->logger->warning('iMIP: unsupported iTIP method, no email sent', ['method' => $iTipMessage->method, 'recipient' => $iTipMessage->recipient]);
+                $iTipMessage->scheduleStatus = '5.0;Email not delivered. We don\'t know how to send this iTIP method.';
+            }
 
-                        return;
-                }
-
-                break;
-            case 'REQUEST':
-                $subject = $senderName.' invited you to "'.$summary.'"';
-                $action = 'REQUEST';
-                break;
-            case 'CANCEL':
-                $subject = '"'.$summary.'" has been canceled.';
-                $action = 'CANCEL';
-                break;
-            default:
-                $this->logger->warning('iMIP: unsupported iTIP method, no email sent', ['method' => $itip->method, 'recipient' => $itip->recipient]);
-                $itip->scheduleStatus = '5.0;Email not delivered. We don\'t know how to send this iTIP method.';
-
-                return;
+            return;
         }
 
-        // Construct objects for the mail template
-        $dateTime =
-            isset($itip->message->VEVENT->DTSTART)
-                ? $itip->message->VEVENT->DTSTART->getDateTime()
-                : new \DateTime('now');
+        // Construct objects for the mail template. A message about a recurring event carries
+        // the event and its exceptions; the event itself is what the email describes.
+        $vevent = $this->primaryEvent($iTipMessage->message) ?? $iTipMessage->message->VEVENT;
 
-        $allDay =
-            isset($itip->message->VEVENT->DTSTART)
-            && false === $itip->message->VEVENT->DTSTART->hasTime();
+        $dtStart = $this->property($vevent, 'DTSTART');
+        $start = $dtStart instanceof VObject\Property\ICalendar\DateTime ? $dtStart->getDateTime() : new \DateTimeImmutable('now');
+        $allDay = $dtStart instanceof VObject\Property\ICalendar\DateTime && !$dtStart->hasTime();
+
+        $end = null;
+        $dtEnd = $this->property($vevent, 'DTEND');
+        $duration = $this->property($vevent, 'DURATION');
+        if ($dtEnd instanceof VObject\Property\ICalendar\DateTime) {
+            $end = $dtEnd->getDateTime();
+        } elseif ($duration instanceof VObject\Property\ICalendar\Duration && $dtStart instanceof VObject\Property\ICalendar\DateTime) {
+            $end = \DateTimeImmutable::createFromInterface($start)->add($duration->getDateInterval());
+        }
 
         $attendees = [];
-        if (isset($itip->message->VEVENT->ATTENDEE)) {
-            $_attendees = &$itip->message->VEVENT->ATTENDEE;
-            for ($i = 0, $max = count($_attendees); $i < $max; ++$i) {
-                $attendee = $_attendees[$i];
-                $attendees[] = [
-                    'cn' => isset($attendee['CN'])
-                            ? (string) $attendee['CN']
-                            : (string) $attendee['EMAIL'],
-                    'email' => isset($attendee['EMAIL'])
-                            ? (string) $attendee['EMAIL']
-                            : null,
-                    'role' => isset($attendee['ROLE'])
-                            ? (string) $attendee['ROLE']
-                            : null,
-                ];
+        foreach ($vevent->select('ATTENDEE') as $attendee) {
+            if (!$attendee instanceof VObject\Property\ICalendar\CalAddress) {
+                continue;
             }
-            usort($attendees, function ($a, $b) {
-                if ('CHAIR' === $a['role']) {
-                    return -1;
-                }
-
-                return 1;
-            });
+            // The address is the value of the property; the EMAIL parameter, when there is
+            // one, is the one to write to.
+            $email = $this->parameter($attendee, 'EMAIL')
+                ?? (string) preg_replace('/^mailto:/i', '', $attendee->getNormalizedValue());
+            $attendees[] = [
+                'cn' => $this->parameter($attendee, 'CN') ?? $email,
+                'email' => '' !== $email ? $email : null,
+                'role' => $this->parameter($attendee, 'ROLE'),
+            ];
         }
+        usort($attendees, function ($a, $b) {
+            if ('CHAIR' === $a['role']) {
+                return -1;
+            }
 
-        $notEmpty = function ($property, $else) use ($itip) {
-            if (isset($itip->message->VEVENT->$property)) {
-                $handle = (string) $itip->message->VEVENT->$property;
+            return 1;
+        });
+
+        $notEmpty = function ($property, $else) use ($vevent) {
+            if (isset($vevent->$property)) {
+                $handle = (string) $vevent->$property;
                 if (!empty($handle)) {
                     return $handle;
                 }
@@ -315,10 +448,10 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
         $locationImageDataAsBase64 = false;
         $locationLink = false;
 
-        if (isset($itip->message->VEVENT->{'X-APPLE-STRUCTURED-LOCATION'})) {
+        if (isset($vevent->{'X-APPLE-STRUCTURED-LOCATION'})) {
             $match = preg_match(
                 '/^(geo:)?(?<latitude>\-?\d+\.\d+),(?<longitude>\-?\d+\.\d+)$/',
-                (string) $itip->message->VEVENT->{'X-APPLE-STRUCTURED-LOCATION'},
+                (string) $vevent->{'X-APPLE-STRUCTURED-LOCATION'},
                 $coordinates
             );
             if (0 !== $match) {
@@ -326,7 +459,7 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
                 $width = 500;
                 $height = 220;
 
-                $latLng = new LatLng($coordinates['latitude'], $coordinates['longitude']);
+                $latLng = new LatLng((float) $coordinates['latitude'], (float) $coordinates['longitude']);
 
                 // https://github.com/DantSu/php-osm-static-api
                 // This fetches map tiles over the network. The map is decoration on an invitation,
@@ -337,7 +470,7 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
                         ->addMarkers(
                             (new Markers($this->publicDir.'/images/marker.png'))
                                 ->setAnchor(Markers::ANCHOR_CENTER, Markers::ANCHOR_BOTTOM)
-                                ->addMarker(new LatLng($coordinates['latitude'], $coordinates['longitude']))
+                                ->addMarker(new LatLng((float) $coordinates['latitude'], (float) $coordinates['longitude']))
                         )
                         ->getImage()
                         ->getBase64PNG();
@@ -356,24 +489,42 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
         }
 
         // For the mail headers, we don't automatically default to the email
-        if ($itip->senderName) {
-            // If we have a proper name, we use it with the optional message origin indicator
-            $mailSenderName = $itip->senderName;
-            if (static::MESSAGE_ORIGIN_INDICATOR) {
-                $mailSenderName = $mailSenderName.' '.static::MESSAGE_ORIGIN_INDICATOR;
-            }
-        } elseif (static::MESSAGE_ORIGIN_INDICATOR) {
-            // Otherwise, we don't use the email except if we explicitly have a message origin
-            // indicator (it would be redundant if there wasn't)
-            $mailSenderName = $senderEmail.' '.static::MESSAGE_ORIGIN_INDICATOR;
+        $mailSenderName = $this->mail->senderDisplayName($iTipMessage->senderName, $senderEmail, static::MESSAGE_ORIGIN_INDICATOR);
+
+        $context = $this->mail->context($action, [
+            'senderName' => $senderName,
+            'recipientName' => $recipientName,
+            'summary' => isset($vevent->SUMMARY) ? (string) $vevent->SUMMARY : '',
+            'start' => $start,
+            'end' => $end,
+            'allDay' => $allDay,
+            'recurring' => isset($vevent->RRULE) || isset($vevent->RDATE),
+            'attendees' => $attendees,
+            'location' => $location,
+            'locationImageDataAsBase64' => $locationImageDataAsBase64,
+            'locationLink' => $locationLink,
+            'url' => $url,
+            'description' => $description,
+            'attached' => false === $deliveredLocally,
+        ]);
+
+        try {
+            $body = $this->mail->render($context);
+        } catch (\Throwable $e) {
+            // Only the shipped templates are left at this point, so this is a bug; it still must
+            // not abort the PUT that stores the event.
+            $this->logger->error('iMIP: the email could not be rendered, no email sent', ['recipient' => $recipientEmail, 'exception' => $e->getMessage()]);
+            $iTipMessage->scheduleStatus = '5.0;Email not delivered. The email could not be rendered.';
+
+            return;
         }
 
         try {
-            $message = (new TemplatedEmail())
+            $message = (new Email())
                 ->from(new Address($this->senderEmail, $mailSenderName))
                 ->to(new Address($recipientEmail, $recipientName ?? ''))
                 ->replyTo(new Address($senderEmail, $mailSenderName))
-                ->subject($subject);
+                ->subject($this->mail->subject($context));
         } catch (RfcComplianceException $e) {
             // An attendee address comes from the organiser's client and is not validated anywhere
             // before this point. Letting it through would abort the PUT that triggered it.
@@ -382,7 +533,7 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
                 'recipient' => $recipientEmail,
                 'exception' => $e->getMessage(),
             ]);
-            $itip->scheduleStatus = '5.3;Email not delivered. One of the addresses is not a valid email address.';
+            $iTipMessage->scheduleStatus = '5.3;Email not delivered. One of the addresses is not a valid email address.';
 
             return;
         }
@@ -395,25 +546,11 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
         }
 
         // Now that we have everything, we can set the message body
-        $message->htmlTemplate('mails/scheduling.html.twig')
-                ->textTemplate('mails/scheduling.txt.twig')
-                ->context([
-                    'senderName' => $senderName,
-                    'summary' => $summary,
-                    'action' => $action,
-                    'dateTime' => $dateTime,
-                    'allDay' => $allDay,
-                    'attendees' => $attendees,
-                    'location' => $location,
-                    'locationImageDataAsBase64' => $locationImageDataAsBase64,
-                    'locationLink' => $locationLink,
-                    'url' => $url,
-                    'description' => $description,
-                ]);
+        $message->html($body['html'])->text($body['text']);
 
         if (false === $deliveredLocally) {
             // Attach the event file (invite.ics)
-            $message->attach($itip->message->serialize(), 'invite.ics', 'text/calendar; method='.(string) $itip->method.'; charset=UTF-8');
+            $message->attach($iTipMessage->message->serialize(), 'invite.ics', 'text/calendar; method='.(string) $iTipMessage->method.'; charset=UTF-8');
         }
 
         try {
@@ -424,18 +561,18 @@ final class DavisIMipPlugin extends SabreBaseIMipPlugin
             // client's PUT and lose it.
             $this->logger->error('iMIP: the invitation could not be sent', [
                 'recipient' => $recipientEmail,
-                'method' => $itip->method,
+                'method' => $iTipMessage->method,
                 'exception' => $e->getMessage(),
             ]);
-            $itip->scheduleStatus = '5.1;Email not delivered. The mail transport is unavailable.';
+            $iTipMessage->scheduleStatus = '5.1;Email not delivered. The mail transport is unavailable.';
 
             return;
         }
 
-        $this->logger->info('iMIP: invitation sent', ['recipient' => $recipientEmail, 'method' => $itip->method]);
+        $this->logger->info('iMIP: invitation sent', ['recipient' => $recipientEmail, 'method' => $iTipMessage->method]);
 
         if (false === $deliveredLocally) {
-            $itip->scheduleStatus = '1.1;Scheduling message is sent via iMip.';
+            $iTipMessage->scheduleStatus = '1.1;Scheduling message is sent via iMip.';
         }
     }
 

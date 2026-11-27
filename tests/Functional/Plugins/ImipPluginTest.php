@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Plugins;
 
 use App\Plugins\DavisIMipPlugin;
+use App\Tests\Functional\Double\RecordingMailer;
+use App\Tests\Functional\Double\SchedulingMailFactory;
 use Psr\Log\AbstractLogger;
+use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\ITip;
 use Sabre\VObject\Reader;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mailer\MailerInterface;
-use Symfony\Component\Mime\RawMessage;
+use Symfony\Component\Mime\Email;
 
 /**
  * Scheduling runs inside the PUT that stores the event. Anything thrown here reaches sabre and
@@ -33,12 +35,14 @@ class ImipPluginTest extends KernelTestCase
         $message->recipient = $recipient;
         $message->recipientName = 'Attendee';
         $message->significantChange = true;
-        $message->message = Reader::read(self::EVENT);
+        $document = Reader::read(self::EVENT);
+        self::assertInstanceOf(VCalendar::class, $document);
+        $message->message = $document;
 
         return $message;
     }
 
-    private function plugin(MailerInterface $mailer, array &$logs): DavisIMipPlugin
+    private function plugin(MailerInterface $mailer, array &$logs, bool $emailLocalUsers = true): DavisIMipPlugin
     {
         self::bootKernel();
 
@@ -56,29 +60,16 @@ class ImipPluginTest extends KernelTestCase
         return new DavisIMipPlugin(
             $mailer,
             'no-reply@example.org',
-            static::getContainer()->getParameter('kernel.project_dir').'/public',
-            $logger
+            \dirname(__DIR__, 3).'/public',
+            $logger,
+            SchedulingMailFactory::create(static::getContainer()),
+            $emailLocalUsers
         );
     }
 
-    private function mailer(?\Throwable $failure): MailerInterface
+    private function mailer(?\Throwable $failure): RecordingMailer
     {
-        return new class($failure) implements MailerInterface {
-            public array $sent = [];
-
-            public function __construct(private ?\Throwable $failure)
-            {
-            }
-
-            public function send(RawMessage $message, ?Envelope $envelope = null): void
-            {
-                if ($this->failure) {
-                    throw $this->failure;
-                }
-
-                $this->sent[] = $message;
-            }
-        };
+        return new RecordingMailer($failure);
     }
 
     public function testAnUnreachableTransportDoesNotAbortTheSchedulingEvent(): void
@@ -147,13 +138,20 @@ class ImipPluginTest extends KernelTestCase
         $plugin->schedule($message);
 
         $this->assertCount(1, $mailer->sent);
+        $this->assertInstanceOf(Email::class, $mailer->sent[0]);
 
-        // The templates render from this context, and both of them only emit a link when it is set
-        $this->assertSame(
-            $expected ? $url : false,
-            $mailer->sent[0]->getContext()['url'],
-            $url.($expected ? ' should be offered' : ' should not be offered')
-        );
+        // Both parts show the address only when it is offered as a link
+        $html = $mailer->sent[0]->getHtmlBody();
+        $text = $mailer->sent[0]->getTextBody();
+        $this->assertIsString($html);
+        $this->assertIsString($text);
+        if ($expected) {
+            $this->assertStringContainsString('href="'.htmlspecialchars($url).'"', $html, $url.' should be offered');
+            $this->assertStringContainsString($url, $text);
+        } else {
+            $this->assertStringNotContainsString(htmlspecialchars($url), $html, $url.' should not be offered');
+            $this->assertStringNotContainsString($url, $text);
+        }
     }
 
     public static function urls(): iterable
@@ -178,5 +176,52 @@ class ImipPluginTest extends KernelTestCase
         $this->assertStringStartsWith('1.1', (string) $message->scheduleStatus);
         $this->assertContains('info: iMIP: invitation sent', $logs);
         $this->assertCount(1, $mailer->sent);
+    }
+
+    /**
+     * sabre has already put the message into the calendar of a user of this server (1.2).
+     */
+    public function testUsersOfThisServerGetNoEmailWhenSwitchedOff(): void
+    {
+        $logs = [];
+        $plugin = $this->plugin($mailer = $this->mailer(null), $logs, false);
+
+        $message = $this->message();
+        $message->scheduleStatus = '1.2;The message was delivered locally';
+        $plugin->schedule($message);
+
+        $this->assertSame([], $mailer->sent);
+        $this->assertStringStartsWith('1.2', $message->scheduleStatus);
+    }
+
+    public function testUsersOfThisServerGetAnEmailWithoutAttachmentByDefault(): void
+    {
+        $logs = [];
+        $plugin = $this->plugin($mailer = $this->mailer(null), $logs);
+
+        $message = $this->message();
+        $message->scheduleStatus = '1.2;The message was delivered locally';
+        $plugin->schedule($message);
+
+        $this->assertCount(1, $mailer->sent);
+        $this->assertInstanceOf(Email::class, $mailer->sent[0]);
+        $this->assertSame([], $mailer->sent[0]->getAttachments());
+        $this->assertStringStartsWith('1.2', $message->scheduleStatus);
+    }
+
+    public function testWithoutSettingsTheEmailReadsAsBefore(): void
+    {
+        $logs = [];
+        $plugin = $this->plugin($mailer = $this->mailer(null), $logs);
+
+        $plugin->schedule($this->message());
+
+        $email = $mailer->sent[0];
+        $this->assertInstanceOf(Email::class, $email);
+        $this->assertSame('Organiser invited you to "Test meeting"', $email->getSubject());
+        $this->assertSame('Organiser (via Davis)', $email->getFrom()[0]->getName());
+        $this->assertSame('organiser@example.org', $email->getReplyTo()[0]->getAddress());
+        $this->assertStringContainsString('Mail sent by https://dav.example.org', (string) $email->getTextBody());
+        $this->assertCount(1, $email->getAttachments());
     }
 }

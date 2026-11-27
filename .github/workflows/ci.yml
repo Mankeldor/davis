@@ -161,7 +161,8 @@ jobs:
 
       - name: Install MySQL / GD / ZIP / LDAP PHP extensions
         run: |
-          apk add $PHPIZE_DEPS icu-libs icu-dev libpng-dev libzip-dev openldap-dev
+          # icu-data-full: the scheduling emails are tested in German too, and Alpine's ICU knows English only
+          apk add $PHPIZE_DEPS icu-libs icu-data-full icu-dev libpng-dev libzip-dev openldap-dev
           docker-php-ext-configure intl
           docker-php-ext-configure gd
           docker-php-ext-configure zip

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file source-language="en" target-language="de" datatype="plaintext" original="file.ext">
+    <header>
+      <tool tool-id="symfony" tool-name="Symfony"/>
+    </header>
+    <body>
+      <trans-unit id="mail001" resname="title">
+        <source>title</source>
+        <target>Kalendernachricht von {name}</target>
+      </trans-unit>
+      <trans-unit id="mail002" resname="sender.branded">
+        <source>sender.branded</source>
+        <target>{name} über {brand}</target>
+      </trans-unit>
+      <trans-unit id="mail003" resname="subject.request">
+        <source>subject.request</source>
+        <target>Einladung: {summary} · {when}</target>
+      </trans-unit>
+      <trans-unit id="mail004" resname="subject.update">
+        <source>subject.update</source>
+        <target>Geändert: {summary} · {when}</target>
+      </trans-unit>
+      <trans-unit id="mail005" resname="subject.cancel">
+        <source>subject.cancel</source>
+        <target>Abgesagt: {summary} · {when}</target>
+      </trans-unit>
+      <trans-unit id="mail006" resname="subject.uninvited">
+        <source>subject.uninvited</source>
+        <target>Abgesagt für Sie: {summary} · {when}</target>
+      </trans-unit>
+      <trans-unit id="mail007" resname="subject.accepted">
+        <source>subject.accepted</source>
+        <target>{name} nimmt teil: {summary}</target>
+      </trans-unit>
+      <trans-unit id="mail008" resname="subject.tentative">
+        <source>subject.tentative</source>
+        <target>{name} nimmt vielleicht teil: {summary}</target>
+      </trans-unit>
+      <trans-unit id="mail009" resname="subject.declined">
+        <source>subject.declined</source>
+        <target>{name} nimmt nicht teil: {summary}</target>
+      </trans-unit>
+      <trans-unit id="mail010" resname="heading.request">
+        <source>heading.request</source>
+        <target>{name} lädt Sie ein:</target>
+      </trans-unit>
+      <trans-unit id="mail011" resname="heading.update">
+        <source>heading.update</source>
+        <target>{name} hat diesen Termin geändert:</target>
+      </trans-unit>
+      <trans-unit id="mail012" resname="heading.cancel">
+        <source>heading.cancel</source>
+        <target>{name} hat diesen Termin abgesagt:</target>
+      </trans-unit>
+      <trans-unit id="mail013" resname="heading.uninvited">
+        <source>heading.uninvited</source>
+        <target>Sie sind zu diesem Termin nicht mehr eingeladen:</target>
+      </trans-unit>
+      <trans-unit id="mail014" resname="heading.accepted">
+        <source>heading.accepted</source>
+        <target>{name} hat zugesagt:</target>
+      </trans-unit>
+      <trans-unit id="mail015" resname="heading.tentative">
+        <source>heading.tentative</source>
+        <target>{name} hat mit Vorbehalt zugesagt:</target>
+      </trans-unit>
+      <trans-unit id="mail016" resname="heading.declined">
+        <source>heading.declined</source>
+        <target>{name} hat abgesagt:</target>
+      </trans-unit>
+      <trans-unit id="mail017" resname="label.when">
+        <source>label.when</source>
+        <target>Wann</target>
+      </trans-unit>
+      <trans-unit id="mail018" resname="label.attendees">
+        <source>label.attendees</source>
+        <target>Teilnehmer</target>
+      </trans-unit>
+      <trans-unit id="mail019" resname="label.organizer">
+        <source>label.organizer</source>
+        <target>(Organisator)</target>
+      </trans-unit>
+      <trans-unit id="mail020" resname="label.where">
+        <source>label.where</source>
+        <target>Wo</target>
+      </trans-unit>
+      <trans-unit id="mail021" resname="label.map">
+        <source>label.map</source>
+        <target>Auf der Karte öffnen</target>
+      </trans-unit>
+      <trans-unit id="mail022" resname="label.url">
+        <source>label.url</source>
+        <target>Link</target>
+      </trans-unit>
+      <trans-unit id="mail023" resname="label.notes">
+        <source>label.notes</source>
+        <target>Notizen</target>
+      </trans-unit>
+      <trans-unit id="mail024" resname="when.time">
+        <source>when.time</source>
+        <target>{start} Uhr ({zone})</target>
+      </trans-unit>
+      <trans-unit id="mail025" resname="when.time_range">
+        <source>when.time_range</source>
+        <target>{start}–{end} Uhr ({zone})</target>
+      </trans-unit>
+      <trans-unit id="mail026" resname="when.time_until">
+        <source>when.time_until</source>
+        <target>{start} Uhr bis {endDate}, {end} Uhr ({zone})</target>
+      </trans-unit>
+      <trans-unit id="mail027" resname="when.date_range">
+        <source>when.date_range</source>
+        <target>{start} bis {end}</target>
+      </trans-unit>
+      <trans-unit id="mail028" resname="when.subject">
+        <source>when.subject</source>
+        <target>{date}, {time} Uhr</target>
+      </trans-unit>
+      <trans-unit id="mail029" resname="when.subject_all_day">
+        <source>when.subject_all_day</source>
+        <target>{date}</target>
+      </trans-unit>
+      <trans-unit id="mail030" resname="when.recurring">
+        <source>when.recurring</source>
+        <target>Der Termin wiederholt sich.</target>
+      </trans-unit>
+      <trans-unit id="mail031" resname="hint.reply">
+        <source>hint.reply</source>
+        <target>Zu- oder absagen können Sie in Ihrem Kalenderprogramm: Die Einladung hängt als Datei an.</target>
+      </trans-unit>
+      <trans-unit id="mail032" resname="footer.unbranded">
+        <source>footer.unbranded</source>
+        <target>Diese Nachricht wurde von {site} verschickt. Antworten gehen an {name}.</target>
+      </trans-unit>
+      <trans-unit id="mail033" resname="footer.branded">
+        <source>footer.branded</source>
+        <target>{brand} hat diese Nachricht im Auftrag von {name} verschickt. Antworten gehen an {name}.</target>
+      </trans-unit>
+      <trans-unit id="mail034" resname="footer.reply">
+        <source>footer.reply</source>
+        <target>Antworten gehen an {name}.</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Service;
 
 use App\Services\Diagnostics;
+use App\Tests\Functional\Double\SchedulingMailFactory;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
@@ -256,6 +257,59 @@ class DiagnosticsTest extends KernelTestCase
 
             $this->assertSame(Diagnostics::WARNING, $check['severity'], $value);
             $this->assertSame($value, $check['value']);
+        }
+    }
+
+    public function testTheSchedulingEmailsAreLeftOutWithoutAService(): void
+    {
+        $this->assertArrayNotHasKey('diagnostics.invite_language', $this->checksOf($this->diagnosticsWith()));
+    }
+
+    public function testDefaultSchedulingEmailsReportNothingToLookAt(): void
+    {
+        $diagnostics = $this->diagnosticsWith(['schedulingMail' => SchedulingMailFactory::create(static::getContainer())]);
+
+        $this->assertSame(Diagnostics::OK, $this->severityOf($diagnostics, 'diagnostics.invite_language'));
+        $this->assertSame(Diagnostics::OK, $this->severityOf($diagnostics, 'diagnostics.invite_look'));
+        $this->assertSame(Diagnostics::OK, $this->severityOf($diagnostics, 'diagnostics.invite_templates'));
+        $this->assertSame(Diagnostics::INFO, $this->severityOf($diagnostics, 'diagnostics.invite_local_users'));
+    }
+
+    /**
+     * Each of these falls back to the default without a word, which is why the page says so.
+     *
+     * @dataProvider unusableMailSettings
+     */
+    public function testUnusableSchedulingEmailSettingsAreReported(array $settings, string $title): void
+    {
+        $diagnostics = $this->diagnosticsWith(['schedulingMail' => SchedulingMailFactory::create(static::getContainer(), $settings)]);
+
+        $this->assertSame(Diagnostics::WARNING, $this->severityOf($diagnostics, $title));
+    }
+
+    public static function unusableMailSettings(): iterable
+    {
+        yield 'a language without texts' => [['locale' => 'xx'], 'diagnostics.invite_language'];
+        yield 'a logo that is not a web address' => [['logoUrl' => 'logo.png'], 'diagnostics.invite_look'];
+        yield 'a color that is not one' => [['accentColor' => 'black'], 'diagnostics.invite_look'];
+        yield 'a templates directory that is not there' => [['templatesDir' => '/nonexistent/davis-templates'], 'diagnostics.invite_templates'];
+    }
+
+    public function testABrokenTemplateOfOneOwnIsReportedWithItsError(): void
+    {
+        $directory = sys_get_temp_dir().'/davis-diagnostics-templates-'.uniqid();
+        mkdir($directory);
+        file_put_contents($directory.'/layout.txt.twig', '{% if %}');
+
+        try {
+            $diagnostics = $this->diagnosticsWith(['schedulingMail' => SchedulingMailFactory::create(static::getContainer(), ['templatesDir' => $directory])]);
+            $check = $this->checksOf($diagnostics)['diagnostics.invite_templates'];
+
+            $this->assertSame(Diagnostics::WARNING, $check['severity']);
+            $this->assertStringStartsWith('layout.txt.twig: ', (string) $check['command']);
+        } finally {
+            unlink($directory.'/layout.txt.twig');
+            rmdir($directory);
         }
     }
 }

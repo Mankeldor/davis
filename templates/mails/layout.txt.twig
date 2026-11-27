@@ -1,0 +1,20 @@
+{#- Frame of the text part of every scheduling email. -#}
+{% block title %}{{ t('title', {name: senderName}) }}{% endblock %}
+
+
+-----------------------------------------------------------
+{% block content %}{% endblock %}
+-----------------------------------------------------------
+
+{% block footer %}
+{%- if brand.footer -%}
+{{ brand.footer }}
+{%- elseif brand.name -%}
+{{ t('footer.branded', {brand: brand.name, name: senderName}) }}
+{%- elseif siteUrl -%}
+{{ t('footer.unbranded', {site: siteUrl, name: senderName}) }}
+{%- else -%}
+{{ t('footer.reply', {name: senderName}) }}
+{%- endif -%}
+{% endblock %}
+
