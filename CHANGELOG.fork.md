@@ -11,6 +11,8 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+## [5.6.3-st2.7] - 2026-11-27
+
 > **Updating needs no manual step.** No migration. Without the new settings, invitation emails
 > read as before, with two differences: an update and a removal now have emails of their own
 > (see below), and the time shows when the event ends.
