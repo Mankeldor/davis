@@ -33,6 +33,8 @@ parameters:
     default_invite_empty: ""
     invite_email_local_users: "%env(bool:default:default_invite_email_local_users:INVITE_EMAIL_LOCAL_USERS)%"
     default_invite_email_local_users: "true"
+    free_busy_lookup_enabled: "%env(bool:default:default_free_busy_lookup_enabled:FREE_BUSY_LOOKUP_ENABLED)%"
+    default_free_busy_lookup_enabled: "false"
 
 services:
     # default configuration for services in *this* file
@@ -74,6 +76,7 @@ services:
             $apiUserManagementEnabled: "%api_user_management_enabled%"
             $adminAuthBypass: "%admin_auth_bypass%"
             $inviteEmailLocalUsers: "%invite_email_local_users%"
+            $freeBusyLookupEnabled: "%free_busy_lookup_enabled%"
 
     App\Services\SchedulingMail:
         arguments:
@@ -126,6 +129,7 @@ services:
             $webdavHomesDir: "%env(resolve:WEBDAV_HOMES_DIR)%"
             $webdavTmpDir: "%env(resolve:WEBDAV_TMP_DIR)%"
             $webdavPublicDirWritable: "%webdav_public_dir_writable%"
+            $freeBusyLookupEnabled: "%free_busy_lookup_enabled%"
 
     App\Security\LoginFormAuthenticator:
         arguments:

@@ -8,6 +8,7 @@ use App\Plugins\BirthdayCalendarPlugin;
 use App\Plugins\DavisIMipPlugin;
 use App\Plugins\DavisTemporaryFileFilterPlugin;
 use App\Plugins\DefaultAvailabilityPlugin;
+use App\Plugins\FreeBusySchedulePlugin;
 use App\Plugins\PublicAwareDAVACLPlugin;
 use App\Services\BasicAuth;
 use App\Services\BirthdayService;
@@ -162,6 +163,13 @@ class DAVController extends AbstractController
     protected $LDAPAuthBackend;
 
     /**
+     * Whether users may ask for the busy times of other users (FREE_BUSY_LOOKUP_ENABLED).
+     *
+     * @var bool
+     */
+    protected $freeBusyLookupEnabled;
+
+    /**
      * Logger for exceptions.
      *
      * @var Psr\Log\LoggerInterface;
@@ -175,7 +183,7 @@ class DAVController extends AbstractController
      */
     protected $server;
 
-    public function __construct(MailerInterface $mailer, BasicAuth $basicAuthBackend, IMAPAuth $IMAPAuthBackend, LDAPAuth $LDAPAuthBackend, UrlGeneratorInterface $router, EntityManagerInterface $entityManager, LoggerInterface $logger, BirthdayService $birthdayService, SchedulingMail $schedulingMail, string $publicDir, bool $calDAVEnabled = true, bool $cardDAVEnabled = true, bool $webDAVEnabled = false, bool $publicCalendarsEnabled = true, ?string $inviteAddress = null, ?string $authMethod = null, ?string $authRealm = null, ?string $webdavPublicDir = null, ?string $webdavHomesDir = null, ?string $webdavTmpDir = null, bool $webdavPublicDirWritable = false, bool $inviteEmailLocalUsers = true)
+    public function __construct(MailerInterface $mailer, BasicAuth $basicAuthBackend, IMAPAuth $IMAPAuthBackend, LDAPAuth $LDAPAuthBackend, UrlGeneratorInterface $router, EntityManagerInterface $entityManager, LoggerInterface $logger, BirthdayService $birthdayService, SchedulingMail $schedulingMail, string $publicDir, bool $calDAVEnabled = true, bool $cardDAVEnabled = true, bool $webDAVEnabled = false, bool $publicCalendarsEnabled = true, ?string $inviteAddress = null, ?string $authMethod = null, ?string $authRealm = null, ?string $webdavPublicDir = null, ?string $webdavHomesDir = null, ?string $webdavTmpDir = null, bool $webdavPublicDirWritable = false, bool $inviteEmailLocalUsers = true, bool $freeBusyLookupEnabled = false)
     {
         $this->publicDir = $publicDir;
 
@@ -189,6 +197,7 @@ class DAVController extends AbstractController
         $this->webdavHomesDir = $webdavHomesDir;
         $this->webdavTmpDir = $webdavTmpDir;
         $this->webdavPublicDirWritable = $webdavPublicDirWritable;
+        $this->freeBusyLookupEnabled = $freeBusyLookupEnabled;
 
         $this->em = $entityManager;
         $this->logger = $logger;
@@ -321,7 +330,8 @@ class DAVController extends AbstractController
         if ($this->calDAVEnabled) {
             $this->server->addPlugin(new \Sabre\DAV\Sharing\Plugin());
             $this->server->addPlugin(new \Sabre\CalDAV\Plugin());
-            $this->server->addPlugin(new \Sabre\CalDAV\Schedule\Plugin());
+            // sabre's scheduling plugin, which can also answer free-busy requests for other users
+            $this->server->addPlugin(new FreeBusySchedulePlugin($this->freeBusyLookupEnabled));
             // Issue #317: macOS Calendar needs calendar-availability to exist on the inbox
             $this->server->addPlugin(new DefaultAvailabilityPlugin());
             $this->server->addPlugin(new \Sabre\CalDAV\SharingPlugin());

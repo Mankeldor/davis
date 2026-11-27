@@ -238,6 +238,18 @@ class DiagnosticsTest extends KernelTestCase
         $this->assertNull($check['command']);
     }
 
+    public function testTheFreeBusyLookupIsShownWithItsSetting(): void
+    {
+        $off = $this->checksOf($this->diagnosticsWith())['diagnostics.free_busy_lookup'];
+        $this->assertSame(Diagnostics::INFO, $off['severity']);
+        $this->assertSame('diagnostics.value.disabled', $off['value']);
+        $this->assertSame('FREE_BUSY_LOOKUP_ENABLED=true', $off['command']);
+
+        $on = $this->checksOf($this->diagnosticsWith(['freeBusyLookupEnabled' => true]))['diagnostics.free_busy_lookup'];
+        $this->assertSame('diagnostics.value.enabled', $on['value']);
+        $this->assertNull($on['command']);
+    }
+
     public function testTheAuthBypassIsShownWhenOn(): void
     {
         $diagnostics = $this->diagnosticsWith(['adminAuthBypass' => 'true']);

@@ -865,6 +865,18 @@
         <source>diagnostics.value.enabled</source>
         <target>enabled</target>
       </trans-unit>
+      <trans-unit id="dbg063" resname="diagnostics.free_busy_lookup">
+        <source>diagnostics.free_busy_lookup</source>
+        <target>Free-busy lookup of other users</target>
+      </trans-unit>
+      <trans-unit id="dbg064" resname="diagnostics.free_busy_lookup.disabled">
+        <source>diagnostics.free_busy_lookup.disabled</source>
+        <target>Users can only see their own busy times. To let them see when other users of this server are busy (without titles or details), set FREE_BUSY_LOOKUP_ENABLED=true.</target>
+      </trans-unit>
+      <trans-unit id="dbg065" resname="diagnostics.free_busy_lookup.enabled">
+        <source>diagnostics.free_busy_lookup.enabled</source>
+        <target>Users can see when other users of this server are busy, without titles or details. Calendars that others share with a user do not count for that user, nor do calendars marked as transparent.</target>
+      </trans-unit>
       <trans-unit id="apk01" resname="title.app_keys">
         <source>title.app_keys</source>
         <target>App keys</target>

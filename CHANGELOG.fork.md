@@ -11,6 +11,17 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+### Added
+
+- **Free-busy lookup of other users.** With `FREE_BUSY_LOOKUP_ENABLED=true` in `.env.local`,
+  every logged-in user can ask when the other users of this server are busy (a `VFREEBUSY`
+  request to their own outbox, RFC 6638), and gets their busy periods back with status `2.0`.
+  Until now only one's own address worked; every other user came back as
+  `3.7;No calendar-home-set property found`. Only busy periods are shared, never titles,
+  places or attendees. Not counted: events marked as free, cancelled events, calendars marked
+  as transparent and calendars that others share with the user. Working hours a user saved in
+  their client apply. Off by default; the diagnostics page shows the setting.
+
 ## [5.6.3-st2.7] - 2026-11-27
 
 > **Updating needs no manual step.** No migration. Without the new settings, invitation emails

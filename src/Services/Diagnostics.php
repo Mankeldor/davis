@@ -43,6 +43,7 @@ final class Diagnostics
         private bool $apiUserManagementEnabled = false,
         private ?SchedulingMail $schedulingMail = null,
         private bool $inviteEmailLocalUsers = true,
+        private bool $freeBusyLookupEnabled = false,
     ) {
     }
 
@@ -75,6 +76,7 @@ final class Diagnostics
                 $this->mailer(),
                 $this->accountsWithoutEmail(),
                 ...$this->schedulingMails(),
+                $this->freeBusyLookup(),
             ],
             'diagnostics.bucket.endpoints' => array_values(array_filter([
                 $this->davEndpoint(),
@@ -328,6 +330,15 @@ final class Diagnostics
         }
 
         return $this->check(self::OK, 'diagnostics.invite_address', $this->inviteAddress ?: 'diagnostics.value.not_set');
+    }
+
+    private function freeBusyLookup(): array
+    {
+        if (!$this->freeBusyLookupEnabled) {
+            return $this->check(self::INFO, 'diagnostics.free_busy_lookup', 'diagnostics.value.disabled', 'diagnostics.free_busy_lookup.disabled', 'FREE_BUSY_LOOKUP_ENABLED=true');
+        }
+
+        return $this->check(self::INFO, 'diagnostics.free_busy_lookup', 'diagnostics.value.enabled', 'diagnostics.free_busy_lookup.enabled');
     }
 
     private function mailer(): array

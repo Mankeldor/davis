@@ -278,6 +278,16 @@ The templates get these variables. They will only be added to, not renamed or re
 | `brand` | `name`, `logoUrl` (`null` when not set or not usable), `accentColor` (always set), `footer` |
 | `locale`, `siteUrl` | The language of the email and the address of this server |
 
+**Free-busy lookup of other users**
+
+Calendar clients can ask the server when someone is busy, for instance to find a time for a meeting (a `VFREEBUSY` request posted to one's own scheduling outbox, [RFC 6638](https://www.rfc-editor.org/rfc/rfc6638.html#section-5)). By default this only works for one's own address: for every other user the answer is `3.7;No calendar-home-set property found`. To let every logged-in user see when the other users of this server are busy:
+
+```shell
+FREE_BUSY_LOOKUP_ENABLED=true
+```
+
+Only busy periods are shared, never titles, places or attendees. Events marked as free (transparent) and cancelled events don't count, nor do calendars marked as transparent, nor calendars that others share with the user. An availability (working hours) that the user saved in their client applies. Addresses that don't belong to a user of this server still get `3.7`.
+
 
 **f. The reminder offset for all birthdays**
 

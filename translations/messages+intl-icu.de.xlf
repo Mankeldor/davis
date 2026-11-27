@@ -865,6 +865,18 @@
         <source>diagnostics.value.enabled</source>
         <target>aktiviert</target>
       </trans-unit>
+      <trans-unit id="dbg063" resname="diagnostics.free_busy_lookup">
+        <source>diagnostics.free_busy_lookup</source>
+        <target>Frei/belegt anderer Benutzer</target>
+      </trans-unit>
+      <trans-unit id="dbg064" resname="diagnostics.free_busy_lookup.disabled">
+        <source>diagnostics.free_busy_lookup.disabled</source>
+        <target>Benutzer sehen nur ihre eigenen belegten Zeiten. Damit sie sehen, wann andere Benutzer dieses Servers belegt sind (ohne Titel oder Details), setzen Sie FREE_BUSY_LOOKUP_ENABLED=true.</target>
+      </trans-unit>
+      <trans-unit id="dbg065" resname="diagnostics.free_busy_lookup.enabled">
+        <source>diagnostics.free_busy_lookup.enabled</source>
+        <target>Benutzer sehen, wann andere Benutzer dieses Servers belegt sind, ohne Titel oder Details. Kalender, die andere mit einem Benutzer teilen, zählen für ihn nicht, ebenso wenig als transparent markierte Kalender.</target>
+      </trans-unit>
       <trans-unit id="apk01" resname="title.app_keys">
         <source>title.app_keys</source>
         <target>App-Schlüssel</target>

@@ -865,6 +865,18 @@
         <source>diagnostics.value.enabled</source>
         <target>activé</target>
       </trans-unit>
+      <trans-unit id="dbg063" resname="diagnostics.free_busy_lookup">
+        <source>diagnostics.free_busy_lookup</source>
+        <target>Disponibilités des autres utilisateurs</target>
+      </trans-unit>
+      <trans-unit id="dbg064" resname="diagnostics.free_busy_lookup.disabled">
+        <source>diagnostics.free_busy_lookup.disabled</source>
+        <target>Les utilisateurs ne voient que leurs propres plages occupées. Pour qu'ils voient quand les autres utilisateurs de ce serveur sont occupés (sans titres ni détails), définissez FREE_BUSY_LOOKUP_ENABLED=true.</target>
+      </trans-unit>
+      <trans-unit id="dbg065" resname="diagnostics.free_busy_lookup.enabled">
+        <source>diagnostics.free_busy_lookup.enabled</source>
+        <target>Les utilisateurs voient quand les autres utilisateurs de ce serveur sont occupés, sans titres ni détails. Les calendriers que d'autres partagent avec un utilisateur ne comptent pas pour lui, pas plus que ceux marqués comme transparents.</target>
+      </trans-unit>
       <trans-unit id="apk01" resname="title.app_keys">
         <source>title.app_keys</source>
         <target>Clés d'application</target>

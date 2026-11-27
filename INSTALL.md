@@ -167,6 +167,14 @@ INVITE_EMAIL_LOCAL_USERS=false
 - Logo, footer and templates of your own are described in the README, under the mailer
   configuration.
 
+**Free-busy lookup**: whether logged-in users can see when other users of this server are
+busy, for instance to find a time for a meeting. Only busy periods, no titles or other
+details. Off by default:
+
+```shell
+FREE_BUSY_LOOKUP_ENABLED=true
+```
+
 ## 3. Install the dependencies
 
 ```bash
