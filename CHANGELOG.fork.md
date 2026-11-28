@@ -11,6 +11,11 @@ section is not released (see `RELEASE.md`).
 
 ## [Unreleased]
 
+## [5.6.3-st2.8] - 2026-11-28
+
+> **Updating needs no manual step.** No migration. Without the new setting, Davis behaves as in
+> 5.6.3-st2.7.
+
 ### Added
 
 - **Free-busy lookup of other users.** With `FREE_BUSY_LOOKUP_ENABLED=true` in `.env.local`,
